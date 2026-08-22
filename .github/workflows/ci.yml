@@ -1,0 +1,39 @@
+name: Frontend CI - CDA San Pedro
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'cda-san-pedro-fe/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'cda-san-pedro-fe/**'
+      - '.github/workflows/ci.yml'
+
+jobs:
+  build-and-lint:
+    name: Typecheck & Build (Vite / React)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: cda-san-pedro-fe/package.json
+
+      - name: Install dependencies
+        run: |
+          cd cda-san-pedro-fe
+          npm ci
+
+      - name: Run TypeScript typecheck
+        run: |
+          cd cda-san-pedro-fe
+          npm run build
