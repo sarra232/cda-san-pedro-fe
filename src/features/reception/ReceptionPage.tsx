@@ -18,7 +18,7 @@ import {
   ShieldAlert,
   ListOrdered
 } from 'lucide-react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { vehiculoService } from '../../services/vehiculoService';
 import { clienteService } from '../../services/clienteService';
 import { ingresoService } from '../../services/ingresoService';
@@ -31,6 +31,7 @@ import { Pagination } from '../../components/common/Pagination';
 import { TicketTermicoModal } from './TicketTermicoModal';
 
 export function ReceptionPage() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialPlacaParam = searchParams.get('placa') || '';
 
@@ -243,7 +244,7 @@ export function ReceptionPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, directToFactura: boolean = false) => {
     e.preventDefault();
     setFormError(null);
 
@@ -333,8 +334,14 @@ export function ReceptionPage() {
       }
 
       const res = await ingresoService.createIngreso(payload);
-      setOrdenCreadaBanner(res);
       setIsSubmitting(false);
+
+      if (directToFactura) {
+        navigate(`/facturacion?ingresoId=${res.id}`);
+        return;
+      }
+
+      setOrdenCreadaBanner(res);
       loadIngresosHoy();
 
       // Reset Form
@@ -496,28 +503,28 @@ export function ReceptionPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Link
+              to={`/facturacion?ingresoId=${ordenCreadaBanner.id}`}
+              className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-cda-yellow-500/20 transition-all"
+            >
+              <Receipt className="w-4 h-4" />
+              <span>Facturar Ahora</span>
+            </Link>
+
             <button
               onClick={() => setSelectedTicketOrden(ordenCreadaBanner)}
-              className="bg-cda-dark-800 hover:bg-cda-dark-700 text-cda-yellow-400 border border-cda-dark-700 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-all"
+              className="bg-cda-dark-800 hover:bg-cda-dark-700 text-cda-yellow-400 border border-cda-dark-700 font-bold px-3 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition-all"
             >
               <Printer className="w-4 h-4" />
-              <span>Imprimir Ticket</span>
+              <span>Ticket</span>
             </button>
 
             <Link
               to={`/pista?ordenId=${ordenCreadaBanner.id}`}
-              className="bg-cda-dark-800 hover:bg-cda-dark-700 text-blue-400 border border-cda-dark-700 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-all"
+              className="bg-cda-dark-800 hover:bg-cda-dark-700 text-blue-400 border border-cda-dark-700 font-bold px-3 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition-all"
             >
               <Wrench className="w-4 h-4" />
               <span>Ver en Pista</span>
-            </Link>
-
-            <Link
-              to={`/facturacion?ingresoId=${ordenCreadaBanner.id}`}
-              className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-cda-yellow-500/20 transition-all"
-            >
-              <Receipt className="w-4 h-4" />
-              <span>Facturar</span>
             </Link>
 
             <button
@@ -525,7 +532,7 @@ export function ReceptionPage() {
                 setOrdenCreadaBanner(null);
                 setActiveTab('HISTORIAL');
               }}
-              className="bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 border border-cda-dark-700 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-all"
+              className="bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 border border-cda-dark-700 font-bold px-3 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition-all"
             >
               <ListOrdered className="w-4 h-4" />
               <span>Ver Turnos</span>
@@ -949,24 +956,37 @@ export function ReceptionPage() {
             />
           </div>
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={isSubmitting || isSearchingPlaca}
-            className="w-full bg-gradient-to-r from-cda-yellow-500 to-amber-500 hover:from-cda-yellow-400 hover:to-amber-400 text-black font-black py-3.5 px-6 rounded-xl shadow-lg hover:shadow-cda-yellow-500/20 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-black" />
-                <span>Generando Turno y Orden de Ingreso...</span>
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4" />
-                <span>Confirmar Ingreso & Generar Turno</span>
-              </>
-            )}
-          </button>
+          {/* Submit Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+              type="button"
+              onClick={(e) => handleSubmit(e, true)}
+              disabled={isSubmitting || isSearchingPlaca}
+              className="flex-1 bg-gradient-to-r from-cda-yellow-500 to-amber-500 hover:from-cda-yellow-400 hover:to-amber-400 text-black font-black py-3.5 px-6 rounded-xl shadow-lg hover:shadow-cda-yellow-500/20 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-black" />
+                  <span>Procesando...</span>
+                </>
+              ) : (
+                <>
+                  <Receipt className="w-4 h-4" />
+                  <span>Registrar e Ir a Facturar Directo</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => handleSubmit(e, false)}
+              disabled={isSubmitting || isSearchingPlaca}
+              className="flex-1 bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-200 border border-cda-dark-700 font-bold py-3.5 px-6 rounded-xl transition-all flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50"
+            >
+              <Plus className="w-4 h-4 text-cda-yellow-400" />
+              <span>Solo Registrar Turno</span>
+            </button>
+          </div>
         </form>
       </div>
       )}
