@@ -12,16 +12,20 @@ import { ReportsPage } from '../features/reports/ReportsPage';
 import { UsersPage } from '../features/users/UsersPage';
 import { NotificationsPage } from '../features/notifications/NotificationsPage';
 import { ServicesCatalogPage } from '../features/services/ServicesCatalogPage';
+import { ProveedoresPage } from '../features/expenses/ProveedoresPage';
+import { CuentasPorPagarPage } from '../features/expenses/CuentasPorPagarPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
-  const { user } = useAuthStore();
-  return user ? <>{children}</> : <Navigate to="/login" replace />;
+  const { user, token, checkTokenValidity } = useAuthStore();
+  const isAuthed = Boolean(user && token && checkTokenValidity());
+  return isAuthed ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { user } = useAuthStore();
-  if (!user) return <Navigate to="/login" replace />;
-  if (user.rol !== 'ADMINISTRADOR') return <Navigate to="/dashboard" replace />;
+  const { user, token, checkTokenValidity } = useAuthStore();
+  const isAuthed = Boolean(user && token && checkTokenValidity());
+  if (!isAuthed) return <Navigate to="/login" replace />;
+  if (user?.rol !== 'ADMINISTRADOR') return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
@@ -53,6 +57,22 @@ export function AppRoutes() {
         <Route path="tarifas" element={<Navigate to="/servicios" replace />} />
         
         {/* Rutas exclusivas de Administrador */}
+        <Route
+          path="proveedores"
+          element={
+            <AdminRoute>
+              <ProveedoresPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="cuentas-por-pagar"
+          element={
+            <AdminRoute>
+              <CuentasPorPagarPage />
+            </AdminRoute>
+          }
+        />
         <Route
           path="reportes"
           element={

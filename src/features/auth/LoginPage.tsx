@@ -13,6 +13,8 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
 
+  const [rememberMe, setRememberMe] = useState(true);
+
   // Si ya está autenticado, redirigir a dashboard
   if (user) {
     return <Navigate to="/dashboard" replace />;
@@ -31,7 +33,7 @@ export function LoginPage() {
       await login({
         numeroDocumento: numeroDocumento.trim(),
         password: password.trim(),
-      });
+      }, rememberMe);
       navigate('/dashboard');
     } catch {
       // El error ya queda seteado en el store
@@ -42,7 +44,7 @@ export function LoginPage() {
     setNumeroDocumento(doc);
     setPassword(pass);
     try {
-      await login({ numeroDocumento: doc, password: pass });
+      await login({ numeroDocumento: doc, password: pass }, true);
       navigate('/dashboard');
     } catch {
       // Ignorar
@@ -125,6 +127,19 @@ export function LoginPage() {
                 />
                 <Lock className="w-4 h-4 text-slate-500 absolute right-3.5 top-3.5" />
               </div>
+            </div>
+
+            {/* Checkbox Recordarme */}
+            <div className="flex items-center justify-between pt-0.5">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="rounded border-cda-dark-700 bg-cda-dark-900 text-cda-yellow-500 focus:ring-cda-yellow-500 focus:ring-offset-cda-dark-950 w-4 h-4"
+                />
+                <span>Mantener sesión iniciada</span>
+              </label>
             </div>
 
             <button

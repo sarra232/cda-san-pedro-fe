@@ -5,11 +5,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import './index.css';
 
-const queryClient = new QueryClient({
+// Configuración optimizada de Caché en Memoria del Navegador
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false,
-      retry: 1,
+      staleTime: 1000 * 60 * 2, // 2 minutos de frescura (renderizado instantáneo a 0 ms)
+      gcTime: 1000 * 60 * 10,    // 10 minutos de permanencia en memoria caché
+      refetchOnWindowFocus: false, // Previene recargas innecesarias al cambiar de ventana
+      refetchOnReconnect: true,   // Revalida automáticamente al recuperar conexión a internet
+      retry: 1,                   // 1 reintento automático ante fallos de red
     },
   },
 });

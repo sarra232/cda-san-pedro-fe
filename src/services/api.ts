@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useAuthStore } from '../store/useAuthStore';
 
 // Si VITE_API_URL está definida se usa; de lo contrario, se usa la ruta relativa '/api'
 // Esto permite que funcione transparente en localhost, Docker, Nginx, Ngrok y Vercel sin problemas de CORS.
@@ -7,12 +8,13 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 15000, // 15 segundos timeout para evitar cuelgues
 });
 
-// Interceptor para inyectar token JWT automáticamente
+// Interceptor para inyectar token JWT automáticamente desde el store de Zustand o localStorage
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('cda_token');
+    const token = useAuthStore.getState().token || localStorage.getItem('cda_token');
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -26,10 +28,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Token expirado o inválido
+      // Limpieza de sesión coordinada en el navegador
+      useAuthStore.getState().logout(true);
       if (!window.location.pathname.includes('/login')) {
-        localStorage.removeItem('cda_token');
-        localStorage.removeItem('cda_user');
         window.location.href = '/login';
       }
     }

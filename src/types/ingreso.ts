@@ -31,6 +31,14 @@ export interface OrdenIngreso {
   vehiculo: Vehiculo;
   conductor?: Cliente;
   usuarioNombre: string;
+  ordenPadreId?: string;
+  consecutivoOrdenPadre?: number;
+  esReinspeccion?: boolean;
+  diasTranscurridosRechazo?: number;
+  diasRestantesReinspeccion?: number;
+  esReinspeccionVigente?: boolean;
+  fechaLimiteReinspeccion?: string;
+  pruebasRechazadasPrevias?: string[];
   observaciones?: string;
   createdAt: string;
   pruebas?: PruebaInspeccion[];
@@ -47,5 +55,7 @@ export interface OrdenIngresoFormData {
   conductorEsPropietario: boolean;
   conductorId?: string;
   conductorData?: ClienteFormData;
+  ordenPadreId?: string;
+  esReinspeccion?: boolean;
   observaciones?: string;
 }

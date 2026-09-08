@@ -10,6 +10,7 @@ import {
   PlusCircle, 
   Receipt, 
   ArrowUpRight,
+  ArrowRight,
   Sparkles,
   TrendingUp,
   FileSpreadsheet
@@ -17,7 +18,10 @@ import {
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { reporteService, DashboardStats } from '../../services/reporteService';
+import { cuentaPagarService } from '../../services/cuentaPagarService';
+import { SemaforoVencimientos } from '../../types/cuentapagar';
 import { formatCOP } from '../../utils/formatters';
+import { VencimientosWidget } from './VencimientosWidget';
 
 export function DashboardPage() {
   const { user } = useAuthStore();
@@ -42,6 +46,8 @@ export function DashboardPage() {
     ],
   });
 
+  const [semaforo, setSemaforo] = useState<SemaforoVencimientos | null>(null);
+
   const loadStats = async () => {
     try {
       const data = await reporteService.getDashboardStats();
@@ -49,11 +55,20 @@ export function DashboardPage() {
     } catch {
       // Usar estado por defecto si aún no hay conexión
     }
+
+    if (isAdmin) {
+      try {
+        const sem = await cuentaPagarService.obtenerSemaforo();
+        if (sem) setSemaforo(sem);
+      } catch {
+        // Ignorar si no carga semáforo
+      }
+    }
   };
 
   useEffect(() => {
     loadStats();
-  }, []);
+  }, [isAdmin]);
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -100,6 +115,36 @@ export function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Alerta de Cuentas por Pagar en Rojo (Solo Administradores) */}
+      {isAdmin && semaforo && semaforo.totalVencidas > 0 && (
+        <Link
+          to="/cuentas-por-pagar"
+          className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-rose-950/60 via-red-900/40 to-rose-950/60 border border-rose-500/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-rose-400 hover:shadow-xl hover:shadow-rose-950/50 transition-all cursor-pointer group animate-fade-in"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center justify-center font-bold text-xl shrink-0 animate-pulse">
+              🔴
+            </div>
+            <div>
+              <div className="text-sm font-black text-white group-hover:text-rose-300 transition-colors flex items-center gap-2 flex-wrap">
+                <span>¡Atención! {semaforo.totalVencidas} Cuenta{semaforo.totalVencidas > 1 ? 's' : ''} por Pagar en Rojo</span>
+                <span className="text-[10px] bg-rose-500 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
+                  Vencida{semaforo.totalVencidas > 1 ? 's' : ''} / Hoy
+                </span>
+              </div>
+              <p className="text-xs text-rose-200/80 mt-0.5">
+                Saldo total vencido: <strong className="font-mono text-white">${Number(semaforo.saldoVencido).toLocaleString('es-CO')} COP</strong>. Haz clic para revisar compromisos y registrar desembolsos.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs font-bold text-rose-400 group-hover:text-rose-300 self-end sm:self-auto shrink-0 group-hover:translate-x-1 transition-transform">
+            <span>Gestionar Cuentas por Pagar</span>
+            <ArrowRight className="w-4 h-4" />
+          </div>
+        </Link>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -277,6 +322,9 @@ export function DashboardPage() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Widget de Responsabilidades & Cuentas por Pagar para Administradores */}
+      {isAdmin && <VencimientosWidget />}
     </div>
   );
 }

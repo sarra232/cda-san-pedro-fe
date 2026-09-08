@@ -69,16 +69,37 @@ export function formatCOP(value?: number | null): string {
 
 /**
  * Formatea un número de documento con puntos para mejor legibilidad
- * Ejemplo: "1020304050" -> "1.020.304.050"
+ * Ejemplos: 
+ * - "1020304050" -> "1.020.304.050"
+ * - "900123456-1" -> "900.123.456-1"
+ * - "15.274.742" -> "15.274.742"
  */
 export function formatDocumento(doc?: string | null): string {
   if (!doc) return '';
-  const clean = doc.trim();
-  // Si contiene solo números, formatear con separadores de miles
-  if (/^\d+$/.test(clean)) {
-    return new Intl.NumberFormat('es-CO').format(Number(clean));
+  const trimmed = doc.trim();
+  if (!trimmed) return '';
+
+  // Si tiene formato NIT con guión (ej: 900123456-1 o 900.123.456-1)
+  if (trimmed.includes('-')) {
+    const [base, dv] = trimmed.split('-');
+    const cleanBase = base.replace(/\D/g, '');
+    if (cleanBase) {
+      const formattedBase = new Intl.NumberFormat('es-CO').format(Number(cleanBase));
+      return `${formattedBase}-${dv.trim()}`;
+    }
+    return trimmed;
   }
-  return clean;
+
+  // Si contiene exclusivamente dígitos o dígitos con separadores estándar (. o espacio)
+  const isOnlyDigitsAndSeparators = /^[\d\.\s,]+$/.test(trimmed);
+  const cleanDigits = trimmed.replace(/\D/g, '');
+
+  if (isOnlyDigitsAndSeparators && cleanDigits.length > 0 && cleanDigits.length <= 15) {
+    return new Intl.NumberFormat('es-CO').format(Number(cleanDigits));
+  }
+
+  // Si es un documento con letras (ej: Pasaporte "PA10293", CE con prefijo, PEP), conservar formato íntegro
+  return trimmed;
 }
 
 /**

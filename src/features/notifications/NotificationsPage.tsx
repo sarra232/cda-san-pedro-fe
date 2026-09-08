@@ -28,6 +28,19 @@ export function NotificationsPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [reloadingId, setReloadingId] = useState<string | null>(null);
 
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+  const [testEmail, setTestEmail] = useState('');
+  const [testMessage, setTestMessage] = useState('');
+  const [isSendingTest, setIsSendingTest] = useState(false);
+  const [testFeedback, setTestFeedback] = useState<{ success: boolean; msg: string } | null>(null);
+
+  const [testTemplate, setTestTemplate] = useState<string>('RECORDATORIO_RTM');
+  const [testNombre, setTestNombre] = useState<string>('Wilson Sarrazola');
+  const [testPlaca, setTestPlaca] = useState<string>('KLI84G');
+  const [testTotal, setTestTotal] = useState<number>(223774);
+  const [testMetodo, setTestMetodo] = useState<string>('Efectivo');
+  const [testDias, setTestDias] = useState<number>(15);
+
   const loadData = async () => {
     setIsLoading(true);
     try {
@@ -53,6 +66,42 @@ export function NotificationsPage() {
       // Ignorar
     } finally {
       setIsSweeping(false);
+    }
+  };
+
+  const handleEnviarTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testEmail.trim()) return;
+
+    setIsSendingTest(true);
+    setTestFeedback(null);
+    try {
+      let msg = '';
+      if (testTemplate === 'GENERAL') {
+        msg = await notificacionService.enviarCorreoPrueba(testEmail.trim(), testMessage.trim());
+      } else {
+        msg = await notificacionService.enviarPlantillaReal({
+          tipoPlantilla: testTemplate,
+          destinatario: testEmail.trim(),
+          nombreCliente: testNombre.trim(),
+          placa: testPlaca.trim().toUpperCase(),
+          categoriaVehiculo: testPlaca.endsWith('G') ? 'Motocicleta 4T' : 'Vehículo Liviano Particular',
+          numeroFactura: 'FV-2-22470',
+          total: testTotal,
+          metodoPago: testMetodo,
+          diasRestantes: testDias,
+          cuponOBeneficio: '15% de descuento en tu próxima revisión preventiva durante el mes de tu cumpleaños.',
+          mensaje: testMessage.trim(),
+        });
+      }
+      setTestFeedback({ success: true, msg: msg || 'Plantilla de correo despachada exitosamente a tu bandeja.' });
+    } catch (err: any) {
+      setTestFeedback({ 
+        success: false, 
+        msg: err.response?.data?.message || 'Error al enviar el correo. Verifica las variables en .env.' 
+      });
+    } finally {
+      setIsSendingTest(false);
     }
   };
 
@@ -131,39 +180,217 @@ export function NotificationsPage() {
   };
 
   return (
-    <div className="space-y-6 sm:space-y-8">
+    <div className="space-y-6 animate-fade-in pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-            <span>Cola de Notificaciones & Recordatorios</span>
-            <span className="text-xs font-extrabold text-cda-yellow-400 bg-cda-yellow-400/10 px-2.5 py-0.5 rounded-full border border-cda-yellow-400/20">
-              Despachador
-            </span>
+            <Bell className="w-6 h-6 text-cda-yellow-500" />
+            <span>Centro de Notificaciones & CRM</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Supervisión automática de recordatorios de vencimiento de SOAT/RTM y felicitaciones de cumpleaños
+          <p className="text-xs sm:text-sm text-slate-400">
+            Automatización de alertas de vencimiento RTM, SOAT, estados de pista, comprobantes y fidelización
           </p>
         </div>
 
-        <button
-          onClick={handleBarridoManual}
-          disabled={isSweeping}
-          className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-4 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-cda-yellow-500/10 transition-all disabled:opacity-50"
-        >
-          {isSweeping ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin text-black" />
-              <span>Ejecutando Barrido...</span>
-            </>
-          ) : (
-            <>
-              <Send className="w-4 h-4" />
-              <span>Ejecutar Barrido Manual Ahora</span>
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setTestEmail('wilsonsarrazola@gmail.com');
+              setTestFeedback(null);
+              setIsTestModalOpen(true);
+            }}
+            className="cda-glass hover:bg-cda-dark-800 text-cda-yellow-400 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 border border-cda-yellow-500/30 transition-all shadow-sm"
+          >
+            <Mail className="w-4 h-4 text-cda-yellow-400" />
+            <span>Probar Plantilla de Correo</span>
+          </button>
+
+          <button
+            onClick={handleBarridoManual}
+            disabled={isSweeping}
+            className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-2 transition-all shadow-lg shadow-cda-yellow-500/10 disabled:opacity-50"
+          >
+            {isSweeping ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Ejecutando Barrido...</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                <span>Ejecutar Barrido Diario</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
+
+      {/* Modal de Envío de Plantillas Reales */}
+      {isTestModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="cda-glass bg-cda-dark-900 border border-cda-dark-700 rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div className="flex items-center justify-between border-b border-cda-dark-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-cda-yellow-500/10 text-cda-yellow-400">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Despacho de Correos Transaccionales</h3>
+                  <p className="text-[11px] text-slate-400">Prueba en vivo de las plantillas oficiales de CDA San Pedro</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsTestModalOpen(false)}
+                className="text-slate-400 hover:text-white text-xs p-1.5 rounded-lg hover:bg-cda-dark-800"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleEnviarTestEmail} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Tipo de Notificación / Plantilla *</label>
+                <select
+                  value={testTemplate}
+                  onChange={(e) => setTestTemplate(e.target.value)}
+                  className="w-full bg-cda-dark-950 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
+                >
+                  <option value="RECORDATORIO_RTM">🚨 Recordatorio de Vencimiento de Tecnomecánica (RTM)</option>
+                  <option value="COMPROBANTE_PAGO">🧾 Comprobante de Pago & Factura Electrónica DIAN</option>
+                  <option value="CUMPLEANOS">🎂 Felicitación de Cumpleaños & Bono de Fidelización</option>
+                  <option value="INSPECCION_FINALIZADA">✅ Vehículo Aprobado / Inspección Finalizada</option>
+                  <option value="GENERAL">✉️ Mensaje Personalizado Libre</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Correo Destinatario *</label>
+                <input
+                  type="email"
+                  required
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                  placeholder="ejemplo@gmail.com"
+                  className="w-full bg-cda-dark-950 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cda-yellow-500"
+                />
+              </div>
+
+              {testTemplate !== 'GENERAL' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-cda-dark-950/60 p-3 rounded-xl border border-cda-dark-800">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">Nombre Cliente</label>
+                    <input
+                      type="text"
+                      value={testNombre}
+                      onChange={(e) => setTestNombre(e.target.value)}
+                      className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">Placa Vehículo</label>
+                    <input
+                      type="text"
+                      value={testPlaca}
+                      onChange={(e) => setTestPlaca(e.target.value.toUpperCase())}
+                      className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono uppercase focus:outline-none focus:border-cda-yellow-500"
+                    />
+                  </div>
+
+                  {testTemplate === 'RECORDATORIO_RTM' && (
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Días Restantes</label>
+                      <input
+                        type="number"
+                        value={testDias}
+                        onChange={(e) => setTestDias(Number(e.target.value))}
+                        className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
+                      />
+                    </div>
+                  )}
+
+                  {testTemplate === 'COMPROBANTE_PAGO' && (
+                    <>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-400 mb-1">Valor Total Pagado ($ COP)</label>
+                        <input
+                          type="number"
+                          value={testTotal}
+                          onChange={(e) => setTestTotal(Number(e.target.value))}
+                          className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-400 mb-1">Método de Pago</label>
+                        <select
+                          value={testMetodo}
+                          onChange={(e) => setTestMetodo(e.target.value)}
+                          className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
+                        >
+                          <option value="Efectivo">Efectivo</option>
+                          <option value="Transferencia Bancolombia / Nequi">Transferencia Bancaria</option>
+                          <option value="Tarjeta Débito">Tarjeta Débito</option>
+                          <option value="Tarjeta Crédito">Tarjeta Crédito</option>
+                        </select>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {testTemplate === 'GENERAL' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Mensaje Libre</label>
+                  <textarea
+                    rows={3}
+                    value={testMessage}
+                    onChange={(e) => setTestMessage(e.target.value)}
+                    placeholder="Escribe el contenido del mensaje..."
+                    className="w-full bg-cda-dark-950 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cda-yellow-500 resize-none"
+                  />
+                </div>
+              )}
+
+              {testFeedback && (
+                <div className={`p-3 rounded-xl text-xs ${
+                  testFeedback.success 
+                    ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' 
+                    : 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
+                }`}>
+                  <p className="font-semibold">{testFeedback.msg}</p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsTestModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-cda-dark-800 transition-colors"
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingTest}
+                  className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-2 transition-all disabled:opacity-50"
+                >
+                  {isSendingTest ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Despachando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Enviar Plantilla</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Metric Counters */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

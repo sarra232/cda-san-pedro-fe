@@ -22,9 +22,11 @@ import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { vehiculoService } from '../../services/vehiculoService';
 import { clienteService } from '../../services/clienteService';
 import { ingresoService } from '../../services/ingresoService';
+import { reinspeccionService } from '../../services/reinspeccionService';
 import { Vehiculo, CategoriaVehiculo } from '../../types/vehiculo';
 import { Cliente } from '../../types/cliente';
 import { OrdenIngreso, EstadoOrden, OrdenIngresoFormData } from '../../types/ingreso';
+import { ReinspeccionVerificacion } from '../../types/reinspeccion';
 import { TipoDocumento } from '../../types/auth';
 import { formatPlaca, handlePlacaInput, cleanPlaca, handlePhoneInput, formatPhone, formatDocumento, sanitizeDate } from '../../utils/formatters';
 import { Pagination } from '../../components/common/Pagination';
@@ -34,6 +36,8 @@ export function ReceptionPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialPlacaParam = searchParams.get('placa') || '';
+  const initialOrdenPadreId = searchParams.get('ordenPadreId') || '';
+  const initialEsReinspeccion = searchParams.get('esReinspeccion') === 'true';
 
   // Tab State: 'FORMULARIO' (Nuevo Turno) | 'HISTORIAL' (Turnos de Hoy)
   const [activeTab, setActiveTab] = useState<'FORMULARIO' | 'HISTORIAL'>('FORMULARIO');
@@ -43,6 +47,7 @@ export function ReceptionPage() {
   const [vehiculoEncontrado, setVehiculoEncontrado] = useState<Vehiculo | null>(null);
   const [isSearchingPlaca, setIsSearchingPlaca] = useState(false);
   const [isVehiculoNuevo, setIsVehiculoNuevo] = useState(false);
+  const [reinspeccionVerif, setReinspeccionVerif] = useState<ReinspeccionVerificacion | null>(null);
 
   // Placa autocomplete suggestions
   const [placaSugerencias, setPlacaSugerencias] = useState<Vehiculo[]>([]);
@@ -179,7 +184,20 @@ export function ReceptionPage() {
     setFormError(null);
 
     try {
-      const veh = await vehiculoService.getVehiculoByPlaca(limpia);
+      const [veh, verif] = await Promise.all([
+        vehiculoService.getVehiculoByPlaca(limpia).catch(() => null),
+        reinspeccionService.verificarPlaca(limpia).catch(() => null),
+      ]);
+
+      if (verif) {
+        setReinspeccionVerif(verif);
+        if (verif.tieneReinspeccionGratuita) {
+          setTipoServicio('REINSPECCION_GRATUITA');
+        }
+      } else {
+        setReinspeccionVerif(null);
+      }
+
       if (veh) {
         setVehiculoEncontrado(veh);
         setIsVehiculoNuevo(false);
@@ -204,6 +222,7 @@ export function ReceptionPage() {
       setVehiculoEncontrado(null);
       setIsVehiculoNuevo(true);
       setIsEditingPropietario(true);
+      setReinspeccionVerif(null);
     } finally {
       setIsSearchingPlaca(false);
     }
@@ -273,6 +292,8 @@ export function ReceptionPage() {
         kilometraje: Number(kilometraje),
         tipoServicio,
         conductorEsPropietario,
+        ordenPadreId: reinspeccionVerif?.tieneReinspeccionGratuita ? reinspeccionVerif.ordenRechazadaId : (initialOrdenPadreId || undefined),
+        esReinspeccion: reinspeccionVerif?.tieneReinspeccionGratuita || tipoServicio === 'REINSPECCION_GRATUITA' || initialEsReinspeccion,
         observaciones: observaciones.trim() || undefined,
       };
 
@@ -639,11 +660,62 @@ export function ReceptionPage() {
                   className="w-full bg-cda-dark-900 border border-cda-dark-700 text-slate-200 text-xs rounded-xl px-3 py-3 focus:border-cda-yellow-500 focus:outline-none"
                 >
                   <option value="RTM_LEGAL">🔍 RTM y Emisiones Contaminantes (Legal)</option>
+                  <option value="REINSPECCION_GRATUITA">🎁 2da Revisión / Reinspección Gratuita (15 Días - $0)</option>
                   <option value="REVISION_PREVENTIVA">🛠️ Revisión Preventiva / Viaje</option>
                   <option value="PERITAJE">📋 Peritaje Completo</option>
                 </select>
               </div>
             </div>
+
+            {/* Banner de Reinspección Gratuita (15 Días) */}
+            {reinspeccionVerif && reinspeccionVerif.tieneReinspeccionGratuita && (
+              <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs space-y-2 shadow-xl animate-fade-in">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <div>
+                      <div className="font-black text-white text-sm">
+                        ¡Vehículo Elegible para 2da Revisión / Reinspección Gratuita!
+                      </div>
+                      <div className="text-[11px] text-emerald-200">
+                        {reinspeccionVerif.mensaje} • Turno Inicial: <strong className="font-mono text-emerald-400">#{reinspeccionVerif.consecutivoOrdenRechazada}</strong>
+                      </div>
+                    </div>
+                  </div>
+                  <span className="px-3.5 py-1.5 rounded-xl text-xs font-black bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 shrink-0 text-center">
+                    TARIFA $0 COP (GRATIS)
+                  </span>
+                </div>
+
+                {reinspeccionVerif.pruebasRechazadas && reinspeccionVerif.pruebasRechazadas.length > 0 && (
+                  <div className="p-2.5 rounded-xl bg-cda-dark-900/90 border border-emerald-500/20 text-[11px] flex items-center gap-2 text-slate-300">
+                    <span className="font-bold text-amber-400 shrink-0">Pruebas No Conformes a Repetir:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {reinspeccionVerif.pruebasRechazadas.map((p) => (
+                        <span key={p} className="bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded-md font-bold text-[10px]">
+                          {p.replace('_', ' ')}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {reinspeccionVerif && !reinspeccionVerif.tieneReinspeccionGratuita && reinspeccionVerif.placa && reinspeccionVerif.fechaRechazo && (
+              <div className="p-4 rounded-2xl bg-rose-950/30 border border-rose-500/40 text-rose-300 text-xs space-y-1.5 shadow-lg animate-fade-in">
+                <div className="flex items-center gap-2.5">
+                  <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+                  <div>
+                    <div className="font-bold text-white text-sm">Plazo Legal de 15 Días Calendario Vencido</div>
+                    <div className="text-[11px] text-rose-200">{reinspeccionVerif.mensaje}</div>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-300 pl-7">
+                  Conforme a la regulación del Ministerio de Transporte, al haber superado los 15 días calendario de gracia, este reingreso se tramita y factura como una <strong>Revisión Completa con Cobro (100%)</strong> con ejecución de las 4 pruebas reglamentarias.
+                </p>
+              </div>
+            )}
 
             {/* Vehicle Recognition Card (if found) */}
             {vehiculoEncontrado && (

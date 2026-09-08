@@ -20,9 +20,11 @@ import {
   X, 
   Printer,
   Search,
-  Check
+  Check,
+  RotateCcw,
+  ArrowRight
 } from 'lucide-react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { ingresoService } from '../../services/ingresoService';
 import { OrdenIngreso, PruebaInspeccion, TipoPrueba, EstadoPrueba, EstadoOrden } from '../../types/ingreso';
@@ -31,6 +33,7 @@ import { Pagination } from '../../components/common/Pagination';
 import { TicketTermicoModal } from '../reception/TicketTermicoModal';
 
 export function InspectionPage() {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const canCertify = user?.rol === 'ADMINISTRADOR' || user?.rol === 'DIRECTOR_TECNICO';
 
@@ -539,6 +542,155 @@ export function InspectionPage() {
 
             {/* Body con Scroll Interno si es necesario */}
             <div className="p-5 sm:p-6 overflow-y-auto space-y-5">
+              {/* Banner Informativo si es Reinspección */}
+              {selectedOrden.esReinspeccion && (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-2 shadow-lg">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <RotateCcw className="w-5 h-5 text-amber-400 shrink-0" />
+                      <div>
+                        <div className="font-bold text-white text-sm">
+                          2da Revisión / Reinspección en Pista (Tarifa $0 COP)
+                        </div>
+                        <div className="text-[11px] text-amber-200">
+                          Asociada a Turno Inicial <strong className="font-mono text-amber-400">#{selectedOrden.consecutivoOrdenPadre || 'Previo'}</strong>
+                        </div>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 text-center">
+                      REINSPECCIÓN ACTIVA
+                    </span>
+                  </div>
+                  {selectedOrden.pruebasRechazadasPrevias && selectedOrden.pruebasRechazadasPrevias.length > 0 && (
+                    <div className="p-2.5 rounded-xl bg-cda-dark-900/90 border border-amber-500/20 text-[11px] space-y-1">
+                      <span className="font-bold text-amber-400">Pruebas Reprobadas en el 1er Intento:</span>
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {selectedOrden.pruebasRechazadasPrevias.map((p) => (
+                          <span key={p} className="bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded-md font-bold text-[10px]">
+                            {p.replace('_', ' ')}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-slate-400 text-[10px]">
+                        Las pruebas aprobadas inicialmente se han precargado para agilizar el proceso en pista.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Banner de Estado APROBADO */}
+              {selectedOrden.estado === 'APROBADO' && (
+                <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs shadow-xl animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/40 shrink-0">
+                        <ShieldCheck className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="font-black text-white text-sm">
+                          ¡Revisión Técnico-Mecánica Aprobada!
+                        </div>
+                        <div className="text-[11px] text-emerald-200">
+                          Vigencia Legal de 1 Año Certificada • Información transmitida ante RUNT y SICOV
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Link
+                        to={`/facturacion?ingresoId=${selectedOrden.id}`}
+                        className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-cda-yellow-500/20 transition-all"
+                      >
+                        <Receipt className="w-4 h-4" />
+                        <span>Pasar a Facturación</span>
+                      </Link>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTicketOrden(selectedOrden)}
+                        className="bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 border border-cda-dark-700 font-bold px-3 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition-all"
+                      >
+                        <Printer className="w-4 h-4 text-cda-yellow-400" />
+                        <span>Ticket / Certificado</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Banner de Estado RECHAZADO con Cronómetro de 15 Días */}
+              {selectedOrden.estado === 'RECHAZADO' && (
+                selectedOrden.esReinspeccionVigente !== false ? (
+                  <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs shadow-xl space-y-3 animate-fade-in">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/40 shrink-0">
+                          <Clock className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <div className="font-black text-white text-sm flex items-center gap-2">
+                            <span>Plazo de 15 Días para 2da Revisión Gratuita</span>
+                            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded text-[10px] font-bold">
+                              Día {(selectedOrden.diasTranscurridosRechazo ?? 0) + 1} de 15
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-amber-200 mt-0.5">
+                            Quedan <strong className="text-white">{selectedOrden.diasRestantesReinspeccion ?? 15} días calendario</strong> de gracia legal para reingresar a pista sin costo adicional ($0 COP).
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleClosePistaModal();
+                            navigate(`/recepcion?placa=${selectedOrden.vehiculo?.placa}&ordenPadreId=${selectedOrden.id}&esReinspeccion=true`);
+                          }}
+                          className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition-all"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          <span>Iniciar 2da Revisión ($0)</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs shadow-xl space-y-3 animate-fade-in">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/40 shrink-0">
+                          <ShieldAlert className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <div className="font-black text-white text-sm">
+                            Plazo Legal de 15 Días Calendario Vencido
+                          </div>
+                          <div className="text-[11px] text-rose-200 mt-0.5">
+                            El beneficio de reinspección gratuita ha expirado conforme a la Resolución 3768. Cualquier reintento requiere el cobro de la tarifa plena (100%).
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleClosePistaModal();
+                            navigate(`/recepcion?placa=${selectedOrden.vehiculo?.placa}`);
+                          }}
+                          className="bg-rose-600 hover:bg-rose-500 text-white font-extrabold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-rose-600/20 transition-all"
+                        >
+                          <ArrowRight className="w-4 h-4" />
+                          <span>Nueva Revisión (Con Cobro)</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              )}
+
               {/* Propietario & Conductor Info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-cda-dark-900/80 p-3.5 rounded-2xl border border-cda-dark-800">
                 <div>
@@ -601,12 +753,15 @@ export function InspectionPage() {
                     const isAprobada = prueba?.estado === 'APROBADO';
                     const isRechazada = prueba?.estado === 'RECHAZADO';
                     const isPendiente = !prueba || prueba.estado === 'PENDIENTE';
+                    const wasReprobadaPreviamente = selectedOrden.pruebasRechazadasPrevias?.includes(tipo);
 
                     return (
                       <div
                         key={tipo}
                         className={`p-4 rounded-2xl border transition-all space-y-3 ${
-                          isAprobada
+                          wasReprobadaPreviamente && isPendiente
+                            ? 'bg-amber-950/30 border-amber-500/60 shadow-md ring-1 ring-amber-500/30'
+                            : isAprobada
                             ? 'bg-emerald-950/20 border-emerald-500/40 shadow-sm'
                             : isRechazada
                             ? 'bg-rose-950/20 border-rose-500/40 shadow-sm'
@@ -637,7 +792,7 @@ export function InspectionPage() {
                             )}
                             {isPendiente && (
                               <span className="bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full text-[10px] font-bold">
-                                PENDIENTE
+                                {wasReprobadaPreviamente ? 'REINSPECCIÓN' : 'PENDIENTE'}
                               </span>
                             )}
                           </div>

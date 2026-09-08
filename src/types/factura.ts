@@ -27,6 +27,13 @@ export interface Factura {
   usuarioNombre: string;
   items: ItemFactura[];
   createdAt: string;
+
+  // Integración Fiscal SIIGO / DIAN
+  estadoDian?: 'PENDIENTE' | 'EMITIDA' | 'RECHAZADA' | 'FALLIDA' | 'ANULADA';
+  numeroFacturaSiigo?: string;
+  pdfSiigoUrl?: string;
+  cufe?: string;
+  mensajeRespuestaDian?: string;
 }
 
 export interface FacturaFormData {
