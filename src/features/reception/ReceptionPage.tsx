@@ -524,13 +524,23 @@ export function ReceptionPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <Link
-              to={`/facturacion?ingresoId=${ordenCreadaBanner.id}`}
-              className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-cda-yellow-500/20 transition-all"
-            >
-              <Receipt className="w-4 h-4" />
-              <span>Facturar Ahora</span>
-            </Link>
+            {!ordenCreadaBanner.facturado && ordenCreadaBanner.estado !== 'FACTURADO' ? (
+              <Link
+                to={`/facturacion?ingresoId=${ordenCreadaBanner.id}`}
+                className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-cda-yellow-500/20 transition-all"
+              >
+                <Receipt className="w-4 h-4" />
+                <span>Facturar Ahora</span>
+              </Link>
+            ) : (
+              <Link
+                to={`/facturacion?ingresoId=${ordenCreadaBanner.id}`}
+                className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 font-extrabold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg transition-all"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Ver Factura</span>
+              </Link>
+            )}
 
             <button
               onClick={() => setSelectedTicketOrden(ordenCreadaBanner)}
@@ -1156,13 +1166,21 @@ export function ReceptionPage() {
                           <span>Pista</span>
                         </Link>
 
-                        {i.estado !== 'FACTURADO' && (
+                        {!i.facturado && i.estado !== 'FACTURADO' ? (
                           <Link
                             to={`/facturacion?ingresoId=${i.id}`}
-                            className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1"
+                            className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 shadow"
                           >
                             <Receipt className="w-3.5 h-3.5" />
                             <span>Facturar</span>
+                          </Link>
+                        ) : (
+                          <Link
+                            to={`/facturacion?ingresoId=${i.id}`}
+                            className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 shadow"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Facturado</span>
                           </Link>
                         )}
                       </div>
@@ -1247,13 +1265,21 @@ export function ReceptionPage() {
                               <span>Pista</span>
                             </Link>
 
-                            {i.estado !== 'FACTURADO' && (
+                            {!i.facturado && i.estado !== 'FACTURADO' ? (
                               <Link
                                 to={`/facturacion?ingresoId=${i.id}`}
                                 className="inline-flex items-center gap-1 bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-3 py-1.5 rounded-lg text-xs shadow-md shadow-cda-yellow-500/10 transition-all"
                               >
                                 <Receipt className="w-3.5 h-3.5" />
                                 <span>Facturar</span>
+                              </Link>
+                            ) : (
+                              <Link
+                                to={`/facturacion?ingresoId=${i.id}`}
+                                className="inline-flex items-center gap-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 font-bold px-3 py-1.5 rounded-lg text-xs shadow-md transition-all"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Facturado</span>
                               </Link>
                             )}
                           </td>

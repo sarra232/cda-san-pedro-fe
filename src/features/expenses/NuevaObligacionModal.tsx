@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Tercero } from '../../types/tercero';
-import { CuentaPorPagarFormData, PeriodicidadPago, TipoObligacion } from '../../types/cuentapagar';
-import { X, Calendar, DollarSign, Tag, Clock, FileText, PlusCircle } from 'lucide-react';
+import { CuentaPorPagar, CuentaPorPagarFormData, PeriodicidadPago, TipoObligacion } from '../../types/cuentapagar';
+import { X, Calendar, DollarSign, Tag, Clock, FileText, PlusCircle, Edit3 } from 'lucide-react';
 
 interface NuevaObligacionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: CuentaPorPagarFormData) => Promise<void>;
   proveedores: Tercero[];
+  cuentaAEditar?: CuentaPorPagar | null;
 }
 
 export const NuevaObligacionModal: React.FC<NuevaObligacionModalProps> = ({
@@ -15,6 +16,7 @@ export const NuevaObligacionModal: React.FC<NuevaObligacionModalProps> = ({
   onClose,
   onSave,
   proveedores,
+  cuentaAEditar,
 }) => {
   const [formData, setFormData] = useState<CuentaPorPagarFormData>({
     acreedorTerceroId: '',
@@ -32,6 +34,36 @@ export const NuevaObligacionModal: React.FC<NuevaObligacionModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (cuentaAEditar) {
+      setFormData({
+        acreedorTerceroId: cuentaAEditar.acreedorTerceroId || '',
+        numeroReferencia: cuentaAEditar.numeroReferencia || '',
+        concepto: cuentaAEditar.concepto || '',
+        montoTotal: Number(cuentaAEditar.montoTotal) || 0,
+        tipoObligacion: cuentaAEditar.tipoObligacion || 'FACTURA_PROVEEDOR',
+        periodicidad: cuentaAEditar.periodicidad || 'PAGO_UNICO',
+        fechaEmision: cuentaAEditar.fechaEmision || new Date().toISOString().split('T')[0],
+        fechaVencimiento: cuentaAEditar.fechaVencimiento || '',
+        diasAvisoAnticipado: cuentaAEditar.diasAvisoAnticipado || 5,
+        observaciones: cuentaAEditar.observaciones || '',
+      });
+    } else {
+      setFormData({
+        acreedorTerceroId: proveedores[0]?.id || '',
+        numeroReferencia: '',
+        concepto: '',
+        montoTotal: 0,
+        tipoObligacion: 'FACTURA_PROVEEDOR',
+        periodicidad: 'PAGO_UNICO',
+        fechaEmision: new Date().toISOString().split('T')[0],
+        fechaVencimiento: '',
+        diasAvisoAnticipado: 5,
+        observaciones: '',
+      });
+    }
+  }, [cuentaAEditar, isOpen, proveedores]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -47,7 +79,7 @@ export const NuevaObligacionModal: React.FC<NuevaObligacionModalProps> = ({
       await onSave(formData);
       onClose();
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Error al registrar obligación');
+      setError(err?.response?.data?.message || 'Error al guardar la obligación');
     } finally {
       setLoading(false);
     }
@@ -60,14 +92,14 @@ export const NuevaObligacionModal: React.FC<NuevaObligacionModalProps> = ({
         <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60 sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <PlusCircle className="w-5 h-5" />
+              {cuentaAEditar ? <Edit3 className="w-5 h-5" /> : <PlusCircle className="w-5 h-5" />}
             </div>
             <div>
               <h3 className="text-lg font-bold text-white">
-                Nueva Cuenta por Pagar / Obligación
+                {cuentaAEditar ? 'Modificar Cuenta por Pagar' : 'Nueva Cuenta por Pagar / Obligación'}
               </h3>
               <p className="text-xs text-slate-400">
-                Registra facturas, membresías, licencias y servicios con fecha de vencimiento
+                {cuentaAEditar ? 'Edita los datos del acreedor, vencimiento o monto de la factura' : 'Registra facturas, membresías, licencias y servicios con fecha de vencimiento'}
               </p>
             </div>
           </div>
@@ -180,6 +212,7 @@ export const NuevaObligacionModal: React.FC<NuevaObligacionModalProps> = ({
                   <option value="SEGUROS_POLIZAS">Seguros / Pólizas</option>
                   <option value="ARRIENDO">Arriendo</option>
                   <option value="IMPUESTOS_TASAS">Impuestos / Tasas</option>
+                  <option value="OBLIGACION_LABORAL">Obligación Laboral (Nómina)</option>
                   <option value="OTRO">Otro</option>
                 </select>
               </div>
@@ -196,6 +229,7 @@ export const NuevaObligacionModal: React.FC<NuevaObligacionModalProps> = ({
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
                 >
                   <option value="PAGO_UNICO">Pago Único (Sin recurrencia)</option>
+                  <option value="QUINCENAL">Quincenal</option>
                   <option value="MENSUAL">Mensual</option>
                   <option value="BIMESTRAL">Bimestral</option>
                   <option value="TRIMESTRAL">Trimestral</option>
@@ -229,7 +263,7 @@ export const NuevaObligacionModal: React.FC<NuevaObligacionModalProps> = ({
                   type="date"
                   value={formData.fechaVencimiento}
                   onChange={(e) => setFormData({ ...formData, fechaVencimiento: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 font-bold"
                   required
                 />
               </div>
@@ -249,6 +283,20 @@ export const NuevaObligacionModal: React.FC<NuevaObligacionModalProps> = ({
             </div>
           </div>
 
+          {/* Observaciones */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              Observaciones / Notas de Pago
+            </label>
+            <textarea
+              rows={2}
+              value={formData.observaciones || ''}
+              onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+              placeholder="Instrucciones de pago o referencia de factura..."
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+
           {/* Botones */}
           <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
             <button
@@ -265,10 +313,12 @@ export const NuevaObligacionModal: React.FC<NuevaObligacionModalProps> = ({
             >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+              ) : cuentaAEditar ? (
+                <Edit3 className="w-4 h-4" />
               ) : (
                 <PlusCircle className="w-4 h-4" />
               )}
-              Registrar Obligación
+              {cuentaAEditar ? 'Guardar Cambios' : 'Registrar Obligación'}
             </button>
           </div>
         </form>

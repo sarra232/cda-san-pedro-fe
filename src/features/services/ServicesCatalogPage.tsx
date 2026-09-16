@@ -45,10 +45,25 @@ export function ServicesCatalogPage() {
   const [tipoServicio, setTipoServicio] = useState('RTM_LEGAL');
   const [nombreServicio, setNombreServicio] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [precio, setPrecio] = useState<number | ''>('');
-  const [ivaPorcentaje, setIvaPorcentaje] = useState<number>(0);
+  const [valorServicio, setValorServicio] = useState<number | ''>('');
+  const [iva, setIva] = useState<number | ''>('');
+  const [runt, setRunt] = useState<number | ''>('');
+  const [sicov, setSicov] = useState<number | ''>('');
+  const [operador, setOperador] = useState<number | ''>('');
+  const [seguridadVial, setSeguridadVial] = useState<number | ''>('');
+  const [fupa, setFupa] = useState<number | ''>('');
+  const [ivaPorcentaje, setIvaPorcentaje] = useState<number>(19);
   const [activo, setActivo] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+
+  const totalCalculado =
+    (Number(valorServicio) || 0) +
+    (Number(iva) || 0) +
+    (Number(runt) || 0) +
+    (Number(sicov) || 0) +
+    (Number(operador) || 0) +
+    (Number(seguridadVial) || 0) +
+    (Number(fupa) || 0);
 
   // Delete Modal State
   const [deleteTarget, setDeleteTarget] = useState<Tarifa | null>(null);
@@ -77,8 +92,14 @@ export function ServicesCatalogPage() {
     setTipoServicio('RTM_LEGAL');
     setNombreServicio('');
     setDescripcion('');
-    setPrecio('');
-    setIvaPorcentaje(0);
+    setValorServicio('');
+    setIva('');
+    setRunt('');
+    setSicov('');
+    setOperador('');
+    setSeguridadVial('');
+    setFupa('');
+    setIvaPorcentaje(19);
     setActivo(true);
     setModalOpen(true);
     setError(null);
@@ -91,17 +112,29 @@ export function ServicesCatalogPage() {
     setTipoServicio(t.tipoServicio || 'RTM_LEGAL');
     setNombreServicio(t.nombreServicio);
     setDescripcion(t.descripcion || '');
-    setPrecio(t.precio);
-    setIvaPorcentaje(t.ivaPorcentaje || 0);
+    setValorServicio(t.valorServicio || Math.round(t.precio / 1.19));
+    setIva(t.iva || (t.precio - Math.round(t.precio / 1.19)));
+    setRunt(t.runt || 0);
+    setSicov(t.sicov || 0);
+    setOperador(t.operador || 0);
+    setSeguridadVial(t.seguridadVial || 0);
+    setFupa(t.fupa || 0);
+    setIvaPorcentaje(t.ivaPorcentaje || 19);
     setActivo(t.activo);
     setModalOpen(true);
     setError(null);
   };
 
+  const handleAutoCalcIva = (valServ: number) => {
+    setValorServicio(valServ);
+    const ivaCalc = Math.round(valServ * 0.19);
+    setIva(ivaCalc);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombreServicio.trim() || precio === '' || Number(precio) < 0) {
-      setError('Por favor completa todos los campos requeridos y un precio válido.');
+    if (!nombreServicio.trim() || totalCalculado < 0) {
+      setError('Por favor completa todos los campos requeridos y valores válidos.');
       return;
     }
 
@@ -109,32 +142,28 @@ export function ServicesCatalogPage() {
     setError(null);
 
     try {
+      const basePayload = {
+        codigo: codigo.trim() || undefined,
+        categoria,
+        tipoServicio,
+        nombreServicio: nombreServicio.trim(),
+        descripcion: descripcion.trim() || undefined,
+        valorServicio: Number(valorServicio) || 0,
+        iva: Number(iva) || 0,
+        runt: Number(runt) || 0,
+        sicov: Number(sicov) || 0,
+        operador: Number(operador) || 0,
+        seguridadVial: Number(seguridadVial) || 0,
+        fupa: Number(fupa) || 0,
+        precio: totalCalculado,
+        ivaPorcentaje,
+        activo,
+      };
+
       if (editingId) {
-        // Update
-        const payload: TarifaUpdateRequest = {
-          codigo: codigo.trim() || undefined,
-          categoria,
-          tipoServicio,
-          nombreServicio: nombreServicio.trim(),
-          descripcion: descripcion.trim() || undefined,
-          precio: Number(precio),
-          ivaPorcentaje,
-          activo,
-        };
-        await tarifaService.updateTarifa(editingId, payload);
+        await tarifaService.updateTarifa(editingId, basePayload as TarifaUpdateRequest);
       } else {
-        // Create
-        const payload: TarifaCreateRequest = {
-          codigo: codigo.trim() || undefined,
-          categoria,
-          tipoServicio,
-          nombreServicio: nombreServicio.trim(),
-          descripcion: descripcion.trim() || undefined,
-          precio: Number(precio),
-          ivaPorcentaje,
-          activo,
-        };
-        await tarifaService.createTarifa(payload);
+        await tarifaService.createTarifa(basePayload as TarifaCreateRequest);
       }
 
       setModalOpen(false);
@@ -581,36 +610,132 @@ export function ServicesCatalogPage() {
               </div>
 
               {/* Tipo de Servicio */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">Tipo de Servicio:</label>
-                  <select
-                    value={tipoServicio}
-                    onChange={(e) => setTipoServicio(e.target.value)}
-                    className="w-full bg-cda-dark-900 border border-cda-dark-700 text-white rounded-xl px-3 py-2 focus:border-cda-yellow-500 focus:outline-none"
-                  >
-                    <option value="RTM_LEGAL">RTM Obligatoria Legal</option>
-                    <option value="PREVENTIVA">Revisión Preventiva</option>
-                    <option value="PERITAJE">Peritaje Comercial</option>
-                    <option value="REINSPECCION">Reinspección (2do Intento)</option>
-                    <option value="OTRO">Otro Servicio / Adicional</option>
-                  </select>
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Tipo de Servicio:</label>
+                <select
+                  value={tipoServicio}
+                  onChange={(e) => setTipoServicio(e.target.value)}
+                  className="w-full bg-cda-dark-900 border border-cda-dark-700 text-white rounded-xl px-3 py-2 focus:border-cda-yellow-500 focus:outline-none"
+                >
+                  <option value="RTM_LEGAL">RTM Obligatoria Legal</option>
+                  <option value="PREVENTIVA">Revisión Preventiva</option>
+                  <option value="PERITAJE">Peritaje Comercial</option>
+                  <option value="REINSPECCION">Reinspección (2do Intento)</option>
+                  <option value="OTRO">Otro Servicio / Adicional</option>
+                </select>
+              </div>
+
+              {/* Desglose de 7 Rubros */}
+              <div className="p-3.5 bg-cda-dark-900/90 rounded-2xl border border-cda-dark-800 space-y-3">
+                <span className="text-[11px] font-bold text-cda-yellow-400 block uppercase">
+                  Desglose de Tarifas Reguladas ($ COP):
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">1. Servicio CDA (Base *):</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      value={valorServicio}
+                      onChange={(e) => handleAutoCalcIva(e.target.value === '' ? 0 : Number(e.target.value))}
+                      placeholder="Ej. 281508"
+                      className="w-full bg-cda-dark-950 border border-cda-dark-700 text-white font-mono font-bold rounded-xl px-3 py-2 focus:border-cda-yellow-500 focus:outline-none"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">2. IVA (19% s/Servicio *):</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={iva}
+                      onChange={(e) => setIva(e.target.value === '' ? 0 : Number(e.target.value))}
+                      placeholder="Ej. 53487"
+                      className="w-full bg-cda-dark-950 border border-cda-dark-700 text-white font-mono font-bold rounded-xl px-3 py-2 focus:border-cda-yellow-500 focus:outline-none"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">3. Tasa RUNT ($):</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      value={runt}
+                      onChange={(e) => setRunt(e.target.value === '' ? 0 : Number(e.target.value))}
+                      placeholder="Ej. 5500"
+                      className="w-full bg-cda-dark-950 border border-cda-dark-700 text-white font-mono font-bold rounded-xl px-3 py-2 focus:border-cda-yellow-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">4. SICOV ($):</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      value={sicov}
+                      onChange={(e) => setSicov(e.target.value === '' ? 0 : Number(e.target.value))}
+                      placeholder="Ej. 35492"
+                      className="w-full bg-cda-dark-950 border border-cda-dark-700 text-white font-mono font-bold rounded-xl px-3 py-2 focus:border-cda-yellow-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">5. Operador / Recaudo ($):</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      value={operador}
+                      onChange={(e) => setOperador(e.target.value === '' ? 0 : Number(e.target.value))}
+                      placeholder="Ej. 10329"
+                      className="w-full bg-cda-dark-950 border border-cda-dark-700 text-white font-mono font-bold rounded-xl px-3 py-2 focus:border-cda-yellow-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-semibold mb-1">6. Seguridad Vial (ANSV $):</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      value={seguridadVial}
+                      onChange={(e) => setSeguridadVial(e.target.value === '' ? 0 : Number(e.target.value))}
+                      placeholder="Ej. 0"
+                      className="w-full bg-cda-dark-950 border border-cda-dark-700 text-white font-mono font-bold rounded-xl px-3 py-2 focus:border-cda-yellow-500 focus:outline-none"
+                    />
+                  </div>
                 </div>
 
-                {/* Precio */}
                 <div>
-                  <label className="block text-slate-300 font-bold mb-1">Precio Total al Público ($ COP) *:</label>
+                  <label className="block text-slate-400 font-semibold mb-1">7. FUPA / Certificado ($):</label>
                   <input
                     type="number"
-                    value={precio}
-                    onChange={(e) => setPrecio(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="Ej. 320000"
-                    min={0}
-                    step={1000}
-                    className="w-full bg-cda-dark-900 border border-cda-dark-700 text-cda-yellow-400 font-mono font-black text-sm rounded-xl px-3 py-2 focus:border-cda-yellow-500 focus:outline-none"
-                    required
+                    min="0"
+                    step="100"
+                    value={fupa}
+                    onChange={(e) => setFupa(e.target.value === '' ? 0 : Number(e.target.value))}
+                    placeholder="Ej. 0"
+                    className="w-full bg-cda-dark-950 border border-cda-dark-700 text-white font-mono font-bold rounded-xl px-3 py-2 focus:border-cda-yellow-500 focus:outline-none"
                   />
                 </div>
+              </div>
+
+              {/* Vista previa en vivo del total regulado */}
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-amber-400 uppercase font-bold block">Total Tarifa al Público (Suma):</span>
+                  <span className="text-xs text-slate-300 font-mono">Servicio + IVA + RUNT + SICOV + Operador + ANSV + FUPA</span>
+                </div>
+                <span className="text-lg font-black font-mono text-cda-yellow-400">
+                  $ {totalCalculado.toLocaleString('es-CO')} COP
+                </span>
               </div>
 
               {/* Descripción */}
@@ -638,25 +763,6 @@ export function ServicesCatalogPage() {
                   <div className="w-11 h-6 bg-cda-dark-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
                 </label>
               </div>
-
-              {/* Vista previa en vivo del desglose fiscal */}
-              {precio !== '' && Number(precio) > 0 && (
-                <div className="p-3 rounded-2xl bg-cda-dark-950 border border-cda-dark-800 space-y-1 text-[11px]">
-                  <span className="text-slate-400 font-bold block uppercase">Liquidación Fiscal Automática:</span>
-                  <div className="flex justify-between text-slate-300">
-                    <span>Base sin IVA:</span>
-                    <span className="font-mono">$ {Math.round(Number(precio) / 1.19).toLocaleString('es-CO')} COP</span>
-                  </div>
-                  <div className="flex justify-between text-slate-300">
-                    <span>IVA 19%:</span>
-                    <span className="font-mono">$ {(Number(precio) - Math.round(Number(precio) / 1.19)).toLocaleString('es-CO')} COP</span>
-                  </div>
-                  <div className="flex justify-between text-cda-yellow-400 font-bold border-t border-cda-dark-800 pt-1">
-                    <span>Total a Facturar al Cliente:</span>
-                    <span className="font-mono font-black">$ {Number(precio).toLocaleString('es-CO')} COP</span>
-                  </div>
-                </div>
-              )}
 
               <div className="flex gap-2 pt-2">
                 <button

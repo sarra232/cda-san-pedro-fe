@@ -5,6 +5,7 @@ import { CuentaPorPagar, CuentaPorPagarFormData, PagoProveedorFormData, Semaforo
 import { Tercero } from '../../types/tercero';
 import { NuevaObligacionModal } from './NuevaObligacionModal';
 import { PagoObligacionModal } from './PagoObligacionModal';
+import { ConfiguracionAlertasModal } from './ConfiguracionAlertasModal';
 import { 
   CreditCard, 
   AlertTriangle, 
@@ -15,7 +16,11 @@ import {
   Search, 
   Calendar,
   Building2,
-  Receipt
+  Receipt,
+  Edit3,
+  Trash2,
+  Settings,
+  Bell
 } from 'lucide-react';
 
 export const CuentasPorPagarPage: React.FC = () => {
@@ -26,9 +31,13 @@ export const CuentasPorPagarPage: React.FC = () => {
   const [filtroEstado, setFiltroEstado] = useState<string>('TODAS');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [modalNuevaOpen, setModalNuevaOpen] = useState(false);
+  const [modalObligacionOpen, setModalObligacionOpen] = useState(false);
+  const [cuentaAEditar, setCuentaAEditar] = useState<CuentaPorPagar | null>(null);
+
   const [modalPagoOpen, setModalPagoOpen] = useState(false);
   const [cuentaSeleccionada, setCuentaSeleccionada] = useState<CuentaPorPagar | null>(null);
+
+  const [modalConfigAlertasOpen, setModalConfigAlertasOpen] = useState(false);
 
   const cargarDatos = async () => {
     try {
@@ -52,9 +61,20 @@ export const CuentasPorPagarPage: React.FC = () => {
     cargarDatos();
   }, []);
 
-  const handleCrearObligacion = async (data: CuentaPorPagarFormData) => {
-    await cuentaPagarService.crear(data);
+  const handleSaveObligacion = async (data: CuentaPorPagarFormData) => {
+    if (cuentaAEditar) {
+      await cuentaPagarService.actualizar(cuentaAEditar.id, data);
+    } else {
+      await cuentaPagarService.crear(data);
+    }
     await cargarDatos();
+  };
+
+  const handleEliminarObligacion = async (id: string) => {
+    if (window.confirm('¿Está seguro de anular esta cuenta por pagar?')) {
+      await cuentaPagarService.eliminar(id);
+      await cargarDatos();
+    }
   };
 
   const handleRegistrarPago = async (cuentaId: string, data: PagoProveedorFormData) => {
@@ -94,13 +114,24 @@ export const CuentasPorPagarPage: React.FC = () => {
                 Cuentas por Pagar & Responsabilidades
               </h1>
               <p className="text-sm text-slate-400">
-                Calendario de vencimientos, facturas de proveedores, licencias y membresías
+                Calendario de vencimientos, facturas de proveedores, licencias y obligaciones
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Botón Configuración de Alertas y Destinatarios */}
+          <button
+            type="button"
+            onClick={() => setModalConfigAlertasOpen(true)}
+            className="px-3.5 py-2.5 bg-slate-900 border border-slate-800 hover:border-amber-500/50 hover:bg-slate-800 text-slate-200 font-semibold rounded-xl flex items-center gap-2 text-xs transition-all shadow-md"
+            title="Administrar correos, celulares y hora de alertas automáticas"
+          >
+            <Settings className="w-4 h-4 text-amber-400" />
+            <span>Configurar Alertas</span>
+          </button>
+
           <button
             onClick={cargarDatos}
             className="p-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-xl transition-all"
@@ -108,8 +139,12 @@ export const CuentasPorPagarPage: React.FC = () => {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
+
           <button
-            onClick={() => setModalNuevaOpen(true)}
+            onClick={() => {
+              setCuentaAEditar(null);
+              setModalObligacionOpen(true);
+            }}
             className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl flex items-center gap-2 text-sm transition-all shadow-lg shadow-amber-500/20"
           >
             <Plus className="w-4 h-4" />
@@ -118,10 +153,27 @@ export const CuentasPorPagarPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Banner de Estado de Notificaciones Automáticas */}
+      <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+          <p className="text-slate-300">
+            <strong className="text-white">Alertas Automáticas Activas:</strong> El sistema evalúa diariamente a las 08:00 AM y notifica a los correos y números registrados cuando hay facturas próximas o vencidas.
+          </p>
+        </div>
+        <button
+          onClick={() => setModalConfigAlertasOpen(true)}
+          className="text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 shrink-0 self-end sm:self-auto"
+        >
+          <Bell className="w-3.5 h-3.5" />
+          <span>Ver / Agregar Destinatarios</span>
+        </button>
+      </div>
+
       {/* Tarjetas KPI de Semáforo */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Rojo: Vencidas */}
-        <div className="p-4 bg-red-950/20 border border-red-500/30 rounded-2xl flex items-center justify-between">
+        <div className="p-4 bg-red-950/20 border border-red-500/30 rounded-2xl flex items-center justify-between shadow-lg">
           <div className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wider text-red-400 flex items-center gap-1.5">
               <AlertTriangle className="w-4 h-4" />
@@ -140,7 +192,7 @@ export const CuentasPorPagarPage: React.FC = () => {
         </div>
 
         {/* Amarillo: Próximas */}
-        <div className="p-4 bg-amber-950/20 border border-amber-500/30 rounded-2xl flex items-center justify-between">
+        <div className="p-4 bg-amber-950/20 border border-amber-500/30 rounded-2xl flex items-center justify-between shadow-lg">
           <div className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
               <Clock className="w-4 h-4" />
@@ -159,7 +211,7 @@ export const CuentasPorPagarPage: React.FC = () => {
         </div>
 
         {/* Verde: Al día */}
-        <div className="p-4 bg-emerald-950/20 border border-emerald-500/30 rounded-2xl flex items-center justify-between">
+        <div className="p-4 bg-emerald-950/20 border border-emerald-500/30 rounded-2xl flex items-center justify-between shadow-lg">
           <div className="space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4" />
@@ -206,8 +258,8 @@ export const CuentasPorPagarPage: React.FC = () => {
               onClick={() => setFiltroEstado(f.id)}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                 filtroEstado === f.id
-                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                  : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
+                  : 'bg-slate-950 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
               }`}
             >
               {f.label}
@@ -221,23 +273,17 @@ export const CuentasPorPagarPage: React.FC = () => {
         {loading ? (
           <div className="p-8 text-center text-slate-400 bg-slate-900/60 rounded-2xl border border-slate-800">
             <RefreshCw className="w-6 h-6 animate-spin mx-auto text-amber-400 mb-2" />
-            Cargando cuentas por pagar...
+            Cargando obligaciones...
           </div>
         ) : cuentasFiltradas.length === 0 ? (
           <div className="p-8 text-center text-slate-400 bg-slate-900/60 rounded-2xl border border-slate-800">
-            No se encontraron obligaciones para el filtro seleccionado.
+            No hay obligaciones en este estado.
           </div>
         ) : (
           cuentasFiltradas.map((c) => (
             <div
               key={c.id}
-              className={`p-4 bg-slate-900 border rounded-2xl space-y-3 shadow-lg ${
-                c.colorSemaforo === 'ROJO'
-                  ? 'border-red-500/40 bg-red-950/10'
-                  : c.colorSemaforo === 'AMARILLO'
-                  ? 'border-amber-500/40 bg-amber-950/10'
-                  : 'border-slate-800'
-              }`}
+              className="p-4 bg-slate-900 border border-slate-800/80 rounded-2xl space-y-3 shadow-lg"
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -279,18 +325,41 @@ export const CuentasPorPagarPage: React.FC = () => {
                 </span>
               </div>
 
-              {c.estado !== 'PAGADA' && (
+              <div className="flex items-center gap-2 pt-1 border-t border-slate-800/60">
                 <button
                   onClick={() => {
-                    setCuentaSeleccionada(c);
-                    setModalPagoOpen(true);
+                    setCuentaAEditar(c);
+                    setModalObligacionOpen(true);
                   }}
-                  className="w-full py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors"
                 >
-                  <Receipt className="w-4 h-4" />
-                  <span>Registrar Pago</span>
+                  <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Modificar</span>
                 </button>
-              )}
+
+                {c.estado !== 'PAGADA' && (
+                  <button
+                    onClick={() => {
+                      setCuentaSeleccionada(c);
+                      setModalPagoOpen(true);
+                    }}
+                    className="flex-1 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                    <span>Pagar</span>
+                  </button>
+                )}
+
+                {c.estado !== 'PAGADA' && (
+                  <button
+                    onClick={() => handleEliminarObligacion(c.id)}
+                    className="p-2 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-xl transition-colors"
+                    title="Anular obligación"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
           ))
         )}
@@ -370,19 +439,46 @@ export const CuentasPorPagarPage: React.FC = () => {
                     </div>
                   </td>
                   <td className="py-3 px-4 text-center">
-                    {c.estado !== 'PAGADA' ? (
+                    <div className="flex items-center justify-center gap-1.5">
+                      {/* Botón Modificar */}
                       <button
                         onClick={() => {
-                          setCuentaSeleccionada(c);
-                          setModalPagoOpen(true);
+                          setCuentaAEditar(c);
+                          setModalObligacionOpen(true);
                         }}
-                        className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold rounded-xl text-xs transition-colors"
+                        className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
+                        title="Modificar Cuenta por Pagar"
                       >
-                        Registrar Pago
+                        <Edit3 className="w-4 h-4" />
                       </button>
-                    ) : (
-                      <span className="text-xs text-slate-500 font-medium">Pagada</span>
-                    )}
+
+                      {/* Botón Registrar Pago */}
+                      {c.estado !== 'PAGADA' ? (
+                        <button
+                          onClick={() => {
+                            setCuentaSeleccionada(c);
+                            setModalPagoOpen(true);
+                          }}
+                          className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold rounded-xl text-xs transition-colors flex items-center gap-1"
+                        >
+                          <Receipt className="w-3.5 h-3.5" />
+                          <span>Pagar</span>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-500 font-medium px-2 py-1">Pagada</span>
+                      )}
+
+                      {/* Botón Anular */}
+                      {c.estado !== 'PAGADA' && (
+                        <button
+                          onClick={() => handleEliminarObligacion(c.id)}
+                          className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+                          title="Anular Obligación"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -393,10 +489,11 @@ export const CuentasPorPagarPage: React.FC = () => {
 
       {/* Modales */}
       <NuevaObligacionModal
-        isOpen={modalNuevaOpen}
-        onClose={() => setModalNuevaOpen(false)}
-        onSave={handleCrearObligacion}
+        isOpen={modalObligacionOpen}
+        onClose={() => setModalObligacionOpen(false)}
+        onSave={handleSaveObligacion}
         proveedores={proveedores}
+        cuentaAEditar={cuentaAEditar}
       />
 
       <PagoObligacionModal
@@ -404,6 +501,12 @@ export const CuentasPorPagarPage: React.FC = () => {
         onClose={() => setModalPagoOpen(false)}
         onSave={handleRegistrarPago}
         cuenta={cuentaSeleccionada}
+      />
+
+      <ConfiguracionAlertasModal
+        isOpen={modalConfigAlertasOpen}
+        onClose={() => setModalConfigAlertasOpen(false)}
+        onConfigUpdated={cargarDatos}
       />
     </div>
   );

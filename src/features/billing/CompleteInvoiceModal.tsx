@@ -152,13 +152,33 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (orden.facturado || orden.estado === 'FACTURADO') {
+      setError(`La orden de ingreso #${orden.consecutivo} ya tiene una factura emitida (${orden.numeroFactura || ''}).`);
+      return;
+    }
+
     if (!pagadorDoc.trim() || !pagadorNombre.trim() || !pagadorCelular.trim()) {
       setError('Debe completar el documento, nombre y celular del pagador de la factura.');
       return;
     }
 
+    if (pagadorDoc.trim().length < 5) {
+      setError('El número de documento debe contener al menos 5 caracteres válidos.');
+      return;
+    }
+
+    if (pagadorNombre.trim().length < 3) {
+      setError('Debe ingresar los nombres y apellidos completos o la razón social.');
+      return;
+    }
+
+    if (pagadorEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pagadorEmail.trim())) {
+      setError('El correo electrónico no tiene un formato válido (ejemplo: usuario@correo.com).');
+      return;
+    }
+
     if (pagadorTipo === 'TERCERO' && !pagadorEmail.trim()) {
-      setError('Para facturar a nombre de empresa o tercero, el correo electrónico es obligatorio para emisión DIAN.');
+      setError('Para facturar a nombre de empresa o tercero, el correo electrónico es obligatorio para la emisión electrónica DIAN.');
       return;
     }
 

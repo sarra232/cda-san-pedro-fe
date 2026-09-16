@@ -7,6 +7,13 @@ export interface Tarifa {
   tipoServicio?: string;
   nombreServicio: string;
   descripcion?: string;
+  valorServicio?: number;
+  iva?: number;
+  runt?: number;
+  sicov?: number;
+  operador?: number;
+  seguridadVial?: number;
+  fupa?: number;
   precio: number;
   ivaPorcentaje?: number;
   activo: boolean;
@@ -20,7 +27,14 @@ export interface TarifaCreateRequest {
   tipoServicio?: string;
   nombreServicio: string;
   descripcion?: string;
-  precio: number;
+  valorServicio?: number;
+  iva?: number;
+  runt?: number;
+  sicov?: number;
+  operador?: number;
+  seguridadVial?: number;
+  fupa?: number;
+  precio?: number;
   ivaPorcentaje?: number;
   activo?: boolean;
 }
@@ -31,7 +45,14 @@ export interface TarifaUpdateRequest {
   tipoServicio?: string;
   nombreServicio: string;
   descripcion?: string;
-  precio: number;
+  valorServicio?: number;
+  iva?: number;
+  runt?: number;
+  sicov?: number;
+  operador?: number;
+  seguridadVial?: number;
+  fupa?: number;
+  precio?: number;
   ivaPorcentaje?: number;
   activo?: boolean;
 }

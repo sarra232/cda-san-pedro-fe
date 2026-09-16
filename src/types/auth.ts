@@ -28,9 +28,24 @@ export interface AuthResponse {
   rol: RolUsuario;
 }
 
+export interface ValidacionTokenResponse {
+  valido: boolean;
+  tipo: string;
+  nombresApellidos: string;
+  numeroDocumento: string;
+  emailEnmascarado: string;
+  mensaje: string;
+}
+
+export interface RestablecerPasswordRequest {
+  token: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   message: string;
   data: T;
-  timestamp: string;
+  timestamp?: string;
 }

@@ -95,3 +95,11 @@ export interface SemaforoVencimientos {
   saldoAlDia: number;
   cuentasUrgentes: CuentaPorPagar[];
 }
+
+export interface ConfiguracionAlertasTesoreria {
+  emails: string[];
+  telefonos: string[];
+  activo: boolean;
+  horaEnvio: string;
+  cronExpression?: string;
+}

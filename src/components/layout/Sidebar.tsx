@@ -6,7 +6,6 @@ import {
   Users, 
   Receipt, 
   FileSpreadsheet, 
-  UserCog, 
   ShieldCheck, 
   Sparkles,
   Bell, 
@@ -17,7 +16,8 @@ import {
   X, 
   Gauge, 
   Wallet, 
-  Settings 
+  Settings,
+  Award 
 } from 'lucide-react';
 
 interface Props {
@@ -143,20 +143,25 @@ export function Sidebar({ isOpen, onClose }: Props) {
                 </NavLink>
               )}
 
-              {/* 2.2 Pista de Inspección (Para todos los roles) */}
+              {/* 2.2 Pista de Inspección (Vehículos en Pista / Procesos Abiertos) */}
               <NavLink
-                to="/pista"
+                to="/pista?filtro=ABIERTOS"
                 onClick={onClose}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  `flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                     isActive
                       ? 'bg-cda-yellow-500 text-black shadow-md shadow-cda-yellow-500/20 font-bold'
                       : 'text-slate-300 hover:bg-cda-dark-800 hover:text-white'
                   }`
                 }
               >
-                <Wrench className="w-4 h-4 shrink-0" />
-                <span>Pista de Inspección</span>
+                <div className="flex items-center gap-3">
+                  <Wrench className="w-4 h-4 shrink-0" />
+                  <span>Vehículos en Pista</span>
+                </div>
+                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  En Pista
+                </span>
               </NavLink>
 
               {/* 2.3 Clientes y Vehículos (Admin, Director y Recepción) */}
@@ -302,20 +307,20 @@ export function Sidebar({ isOpen, onClose }: Props) {
                   </NavLink>
                 )}
 
-                {/* 4.6 Gestión de Personal (Administrador y Director Técnico) */}
+                {/* 4.6 Talento Humano & Personal (Administrador y Director Técnico) */}
                 <NavLink
-                  to="/usuarios"
+                  to="/talento-humano"
                   onClick={onClose}
                   className={({ isActive }) =>
                     `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                       isActive
                         ? 'bg-cda-yellow-500 text-black shadow-md shadow-cda-yellow-500/20 font-bold'
                         : 'text-slate-300 hover:bg-cda-dark-800 hover:text-white'
-                      }`
+                    }`
                   }
                 >
-                  <UserCog className="w-4 h-4 shrink-0" />
-                  <span>{isAdmin ? 'Personal & Roles' : 'Directorio de Personal'}</span>
+                  <Award className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>Talento Humano & Personal</span>
                 </NavLink>
               </div>
             )}

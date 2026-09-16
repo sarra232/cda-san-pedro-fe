@@ -55,6 +55,14 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
     return map;
   }, [facturas]);
 
+  const getFacturaOrden = (orden: OrdenIngreso): Factura | undefined => {
+    return facturasPorOrdenId.get(orden.id) || (orden.facturaId ? facturas.find((f) => f.id === orden.facturaId) : undefined);
+  };
+
+  const isOrdenFacturada = (orden: OrdenIngreso): boolean => {
+    return Boolean(orden.facturado || orden.estado === 'FACTURADO' || getFacturaOrden(orden));
+  };
+
   const getTarifa = (categoria?: string, esReinspeccion?: boolean) => {
     if (esReinspeccion) return 0;
     if (!categoria) return 320000;
@@ -91,21 +99,24 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
       const matchPropietario = orden.vehiculo?.propietario?.nombresRazonSocial?.toLowerCase().includes(q) || false;
       const matchDoc = orden.vehiculo?.propietario?.numeroDocumento?.includes(q) || false;
       
-      const factura = facturasPorOrdenId.get(orden.id);
-      const matchFactura = factura?.numeroFactura?.toLowerCase().includes(q) || false;
+      const factura = getFacturaOrden(orden);
+      const matchFactura = factura?.numeroFactura?.toLowerCase().includes(q) || orden.numeroFactura?.toLowerCase().includes(q) || false;
 
       const coincideBusqueda = !q || matchPlaca || matchConsecutivo || matchPropietario || matchDoc || matchFactura;
       if (!coincideBusqueda) return false;
 
+      const facturada = isOrdenFacturada(orden);
+
       // Filtros por pestaña
       if (activeFilter === 'PENDIENTES') {
-        // En pista o aprobadas pendientes de cobro (no facturadas ni rechazadas)
+        // En pista o aprobadas pendientes de cobro (NO facturadas)
+        if (facturada) return false;
         return orden.estado === 'INGRESADO' || orden.estado === 'EN_INSPECCION' || orden.estado === 'APROBADO';
       }
 
       if (activeFilter === 'COMPLETADOS') {
         // Órdenes que ya tienen factura emitida
-        return orden.estado === 'FACTURADO' || Boolean(factura);
+        return facturada;
       }
 
       if (activeFilter === 'RECHAZADOS') {
@@ -117,13 +128,12 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
 
       return true; // TODAS
     }).sort((a, b) => {
-      // Ordenamiento por defecto:
-      // Para rechazados: descendente de acuerdo al tiempo (más recientes primero)
+      // Ordenamiento por defecto: descendente de acuerdo al tiempo (más recientes primero)
       const fechaA = new Date(a.fechaIngreso || a.createdAt || 0).getTime();
       const fechaB = new Date(b.fechaIngreso || b.createdAt || 0).getTime();
       return fechaB - fechaA;
     });
-  }, [ordenes, facturasPorOrdenId, activeFilter, searchQuery]);
+  }, [ordenes, facturasPorOrdenId, facturas, activeFilter, searchQuery]);
 
   // Conteo de items para las pestañas
   const counts = useMemo(() => {
@@ -132,8 +142,9 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
     let rechazados = 0;
 
     ordenes.forEach((o) => {
-      if (o.estado === 'INGRESADO' || o.estado === 'EN_INSPECCION' || o.estado === 'APROBADO') pendientes++;
-      if (o.estado === 'FACTURADO' || facturasPorOrdenId.has(o.id)) completados++;
+      const facturada = isOrdenFacturada(o);
+      if (!facturada && (o.estado === 'INGRESADO' || o.estado === 'EN_INSPECCION' || o.estado === 'APROBADO')) pendientes++;
+      if (facturada) completados++;
       if (o.estado === 'RECHAZADO') {
         const dias = getDiasTranscurridos(o.fechaIngreso || o.createdAt);
         if (dias <= 15) rechazados++;
@@ -141,7 +152,7 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
     });
 
     return { todas: ordenes.length, pendientes, completados, rechazados };
-  }, [ordenes, facturasPorOrdenId]);
+  }, [ordenes, facturasPorOrdenId, facturas]);
 
   return (
     <div className="space-y-4">
@@ -220,7 +231,8 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
           </div>
         ) : (
           itemsFiltrados.map((orden) => {
-            const factura = facturasPorOrdenId.get(orden.id);
+            const factura = getFacturaOrden(orden);
+            const facturada = isOrdenFacturada(orden);
             const diasTrans = getDiasTranscurridos(orden.fechaIngreso || orden.createdAt);
             const tarifaEstimada = getTarifa(orden.vehiculo?.categoria, Boolean(orden.esReinspeccion));
 
@@ -228,9 +240,9 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
               <div
                 key={orden.id}
                 onClick={() => {
-                  if (orden.estado === 'FACTURADO' && factura) {
+                  if (factura) {
                     onVerFactura(factura);
-                  } else {
+                  } else if (!facturada) {
                     onSelectOrdenParaFacturar(orden);
                   }
                 }}
@@ -253,10 +265,10 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
 
                   {/* Badge de Estado */}
                   <div>
-                    {orden.estado === 'FACTURADO' ? (
+                    {facturada ? (
                       <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" />
-                        <span>Facturado</span>
+                        <span>Facturado {factura ? `(#${factura.numeroFactura})` : (orden.numeroFactura ? `(#${orden.numeroFactura})` : '')}</span>
                       </span>
                     ) : orden.estado === 'RECHAZADO' ? (
                       <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30 flex items-center gap-1">
@@ -324,6 +336,20 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
                         <span>WhatsApp</span>
                       </button>
                     </>
+                  ) : facturada ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const f = facturas.find(x => x.ordenIngreso?.id === orden.id || x.id === orden.facturaId);
+                        if (f) onVerFactura(f);
+                        else alert(`Esta orden ya cuenta con la factura ${orden.numeroFactura || ''} emitida.`);
+                      }}
+                      className="px-3.5 py-1.5 bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 font-bold rounded-xl text-xs flex items-center gap-1"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Ver Factura #{orden.numeroFactura || ''}</span>
+                    </button>
                   ) : (
                     <button
                       type="button"
@@ -367,7 +393,8 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
               </tr>
             ) : (
               itemsFiltrados.map((orden) => {
-                const factura = facturasPorOrdenId.get(orden.id);
+                const factura = getFacturaOrden(orden);
+                const facturada = isOrdenFacturada(orden);
                 const diasTrans = getDiasTranscurridos(orden.fechaIngreso || orden.createdAt);
                 const tarifaEstimada = getTarifa(orden.vehiculo?.categoria, Boolean(orden.esReinspeccion));
 
@@ -375,9 +402,9 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
                   <tr
                     key={orden.id}
                     onClick={() => {
-                      if (orden.estado === 'FACTURADO' && factura) {
+                      if (factura) {
                         onVerFactura(factura);
-                      } else {
+                      } else if (!facturada) {
                         onSelectOrdenParaFacturar(orden);
                       }
                     }}
@@ -427,10 +454,10 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
 
                     {/* Estado Operativo */}
                     <td className="py-3.5 px-4">
-                      {orden.estado === 'FACTURADO' ? (
+                      {facturada ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Facturado {factura ? `(#${factura.numeroFactura})` : ''}</span>
+                          <span>Facturado {factura ? `(#${factura.numeroFactura})` : (orden.numeroFactura ? `(#${orden.numeroFactura})` : '')}</span>
                         </span>
                       ) : orden.estado === 'RECHAZADO' ? (
                         <div>
@@ -519,6 +546,21 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
                             <Send className="w-4 h-4" />
                           </button>
                         </div>
+                      ) : facturada ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const f = facturas.find(x => x.ordenIngreso?.id === orden.id || x.id === orden.facturaId);
+                            if (f) onVerFactura(f);
+                            else alert(`Esta orden ya cuenta con la factura ${orden.numeroFactura || ''} emitida.`);
+                          }}
+                          className="px-3.5 py-1.5 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-400 border border-emerald-500/40 font-bold rounded-xl text-xs flex items-center gap-1 mx-auto transition-colors"
+                          title="Ver Factura"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Factura #{orden.numeroFactura || ''}</span>
+                        </button>
                       ) : (
                         <button
                           type="button"

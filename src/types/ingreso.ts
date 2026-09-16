@@ -39,9 +39,21 @@ export interface OrdenIngreso {
   esReinspeccionVigente?: boolean;
   fechaLimiteReinspeccion?: string;
   pruebasRechazadasPrevias?: string[];
+  motivoRechazo?: string;
+  evidenciaRechazo?: string;
+  pruebasRechazadas?: string[];
   observaciones?: string;
+  facturado?: boolean;
+  facturaId?: string;
+  numeroFactura?: string;
   createdAt: string;
   pruebas?: PruebaInspeccion[];
+}
+
+export interface RechazoOrdenRequest {
+  motivo: string;
+  evidencia?: string;
+  pruebasRechazadas?: TipoPrueba[];
 }
 
 export interface OrdenIngresoFormData {

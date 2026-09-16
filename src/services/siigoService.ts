@@ -12,6 +12,11 @@ export const siigoService = {
     return response.data.data;
   },
 
+  sincronizarDian: async (facturaId: string): Promise<FacturaElectronicaDian> => {
+    const response = await api.post(`/siigo/facturas/${facturaId}/sincronizar-dian`);
+    return response.data.data;
+  },
+
   getEstadoFiscal: async (facturaId: string): Promise<FacturaElectronicaDian | null> => {
     const response = await api.get(`/siigo/facturas/${facturaId}`);
     return response.data.data;

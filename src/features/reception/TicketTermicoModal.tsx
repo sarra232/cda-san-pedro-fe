@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Printer, Receipt, Sparkles } from 'lucide-react';
+import { X, Printer, Receipt, Sparkles, CheckCircle2 } from 'lucide-react';
 import { OrdenIngreso } from '../../types/ingreso';
 import { formatPlaca, formatDocumento, formatPhone } from '../../utils/formatters';
 import { Link } from 'react-router-dom';
@@ -183,14 +183,25 @@ export function TicketTermicoModal({ orden, onClose }: Props) {
             <span>Imprimir Ticket Térmico</span>
           </button>
 
-          <Link
-            to={`/facturacion?ingresoId=${orden.id}`}
-            onClick={onClose}
-            className="flex-1 bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-cda-yellow-500/10 transition-all"
-          >
-            <Receipt className="w-4 h-4" />
-            <span>Proceder a Facturación</span>
-          </Link>
+          {!orden.facturado && orden.estado !== 'FACTURADO' ? (
+            <Link
+              to={`/facturacion?ingresoId=${orden.id}`}
+              onClick={onClose}
+              className="flex-1 bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-cda-yellow-500/10 transition-all"
+            >
+              <Receipt className="w-4 h-4" />
+              <span>Proceder a Facturación</span>
+            </Link>
+          ) : (
+            <Link
+              to={`/facturacion?ingresoId=${orden.id}`}
+              onClick={onClose}
+              className="flex-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Ver Factura Emitida</span>
+            </Link>
+          )}
         </div>
       </div>
 

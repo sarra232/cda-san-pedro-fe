@@ -1,19 +1,26 @@
 import React, { useState } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
-import { ShieldCheck, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
+import { ShieldCheck, Lock, ArrowRight, AlertCircle, Loader2, CheckCircle2, KeyRound } from 'lucide-react';
 import logoCDA from '../../assets/LogoCDA.PNG';
+import { RecuperarPasswordModal } from './RecuperarPasswordModal';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, login, isLoading, error } = useAuthStore();
 
   const [tipoDoc, setTipoDoc] = useState('CC');
   const [numeroDocumento, setNumeroDocumento] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
-
   const [rememberMe, setRememberMe] = useState(true);
+
+  // Modal de recuperación
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+
+  // Notificación de activación exitosa desde URL
+  const activacionExitosa = searchParams.get('activacionExitosa') === 'true';
 
   // Si ya está autenticado, redirigir a dashboard
   if (user) {
@@ -74,6 +81,14 @@ export function LoginPage() {
             </div>
           </div>
 
+          {/* Banner de Activación Exitosa */}
+          {activacionExitosa && (
+            <div className="mb-5 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-emerald-300 text-xs">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+              <span>¡Contraseña configurada con éxito! Ya puedes iniciar sesión con tus nuevas credenciales.</span>
+            </div>
+          )}
+
           {/* Error Banner */}
           {(error || localError) && (
             <div className="mb-5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-2 text-rose-300 text-xs">
@@ -113,9 +128,19 @@ export function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                Contraseña
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-slate-300">
+                  Contraseña
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsForgotModalOpen(true)}
+                  className="text-[11px] text-cda-yellow-400 hover:text-cda-yellow-300 font-semibold transition-colors hover:underline flex items-center gap-1"
+                >
+                  <KeyRound className="w-3 h-3" />
+                  <span>¿Olvidaste tu contraseña?</span>
+                </button>
+              </div>
               <div className="relative w-full">
                 <input
                   type="password"
@@ -145,7 +170,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gradient-to-r from-cda-yellow-500 to-amber-500 hover:from-cda-yellow-400 hover:to-amber-400 text-black font-extrabold py-3.5 px-4 rounded-xl shadow-lg hover:shadow-cda-yellow-500/20 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm group disabled:opacity-50 mt-2"
+              className="w-full bg-gradient-to-r from-cda-yellow-500 to-amber-500 hover:from-cda-yellow-400 hover:to-amber-400 text-black font-extrabold py-3.5 px-4 rounded-xl shadow-lg hover:shadow-cda-yellow-500/20 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm group disabled:opacity-50 mt-2 cursor-pointer"
             >
               {isLoading ? (
                 <>
@@ -192,6 +217,12 @@ export function LoginPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal de Recuperación de Contraseña */}
+      <RecuperarPasswordModal
+        isOpen={isForgotModalOpen}
+        onClose={() => setIsForgotModalOpen(false)}
+      />
     </div>
   );
 }

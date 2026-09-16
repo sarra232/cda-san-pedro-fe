@@ -37,6 +37,11 @@ export const ingresoService = {
     return res.data.data;
   },
 
+  async rechazarOrden(id: string, data: { motivo: string; evidencia?: string; pruebasRechazadas?: TipoPrueba[] }): Promise<OrdenIngreso> {
+    const res = await api.post<ApiResponse<OrdenIngreso>>(`/ingresos/${id}/rechazar`, data);
+    return res.data.data;
+  },
+
   async getPruebas(ordenId: string): Promise<PruebaInspeccion[]> {
     const res = await api.get<ApiResponse<PruebaInspeccion[]>>(`/ingresos/${ordenId}/pruebas`);
     return res.data.data;

@@ -3,7 +3,6 @@ import {
   Wrench, 
   CheckCircle2, 
   Clock, 
-  User, 
   Car, 
   Bike, 
   Truck, 
@@ -22,10 +21,10 @@ import {
   Search,
   Check,
   RotateCcw,
-  ArrowRight
+  Camera,
+  AlertTriangle
 } from 'lucide-react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../../store/useAuthStore';
 import { ingresoService } from '../../services/ingresoService';
 import { OrdenIngreso, PruebaInspeccion, TipoPrueba, EstadoPrueba, EstadoOrden } from '../../types/ingreso';
 import { formatPlaca, formatPhone, formatDocumento } from '../../utils/formatters';
@@ -34,9 +33,6 @@ import { TicketTermicoModal } from '../reception/TicketTermicoModal';
 
 export function InspectionPage() {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
-  const canCertify = user?.rol === 'ADMINISTRADOR' || user?.rol === 'DIRECTOR_TECNICO';
-
   const [searchParams, setSearchParams] = useSearchParams();
   const initialOrdenId = searchParams.get('ordenId') || '';
 
@@ -48,25 +44,27 @@ export function InspectionPage() {
   
   // Filters & Pagination State
   const [searchFilter, setSearchFilter] = useState('');
-  const [filterEstado, setFilterEstado] = useState<string>('TODOS');
+  const [filterEstado, setFilterEstado] = useState<string>('ABIERTOS');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Modal Principal de Gestión de Pruebas de la Orden
+  // Modal Principal de Gestión de la Orden
   const [modalPistaOpen, setModalPistaOpen] = useState(false);
 
-  // Mini-Modal / Formulario de Resultado de Prueba Individual
+  // Modal Especializado de Registro de Rechazo con Evidencia y Motivo
+  const [modalRechazoOpen, setModalRechazoOpen] = useState(false);
+  const [rechazoOrden, setRechazoOrden] = useState<OrdenIngreso | null>(null);
+  const [rechazoMotivo, setRechazoMotivo] = useState('');
+  const [rechazoEvidencia, setRechazoEvidencia] = useState('');
+  const [rechazoPruebas, setRechazoPruebas] = useState<TipoPrueba[]>([]);
+  const [isSavingRechazo, setIsSavingRechazo] = useState(false);
+
+  // Mini-Modal de Prueba Individual (Opcional)
   const [modalPruebaOpen, setModalPruebaOpen] = useState(false);
   const [selectedTipoPrueba, setSelectedTipoPrueba] = useState<TipoPrueba | null>(null);
   const [pruebaEstado, setPruebaEstado] = useState<EstadoPrueba>('APROBADO');
   const [pruebaObservaciones, setPruebaObservaciones] = useState('');
   const [isSavingPrueba, setIsSavingPrueba] = useState(false);
-
-  // Modal de Dictamen Final
-  const [modalDictamenOpen, setModalDictamenOpen] = useState(false);
-  const [dictamenEstado, setDictamenEstado] = useState<EstadoOrden>('APROBADO');
-  const [dictamenObservaciones, setDictamenObservaciones] = useState('');
-  const [isSavingDictamen, setIsSavingDictamen] = useState(false);
 
   // Ticket Modal
   const [selectedTicketOrden, setSelectedTicketOrden] = useState<OrdenIngreso | null>(null);
@@ -105,6 +103,33 @@ export function InspectionPage() {
     loadData();
   }, [initialOrdenId]);
 
+  const urlFiltro = searchParams.get('filtro') || searchParams.get('estado');
+  useEffect(() => {
+    if (urlFiltro) {
+      setFilterEstado(urlFiltro.toUpperCase());
+      setCurrentPage(1);
+    }
+  }, [urlFiltro]);
+
+  const totalAbiertos = ingresos.filter((i) => i.estado === 'INGRESADO' || i.estado === 'EN_INSPECCION').length;
+  const totalAprobados = ingresos.filter((i) => i.estado === 'APROBADO').length;
+  const totalRechazados = ingresos.filter((i) => i.estado === 'RECHAZADO').length;
+  const totalFacturados = ingresos.filter((i) => i.estado === 'FACTURADO').length;
+  const totalTodos = ingresos.length;
+
+  const handleSelectFiltro = (filtro: string) => {
+    setFilterEstado(filtro);
+    setCurrentPage(1);
+    const newParams = new URLSearchParams(searchParams);
+    if (filtro === 'TODOS') {
+      newParams.delete('filtro');
+      newParams.delete('estado');
+    } else {
+      newParams.set('filtro', filtro);
+    }
+    setSearchParams(newParams);
+  };
+
   const handleOpenPistaModal = async (orden: OrdenIngreso) => {
     setSelectedOrden(orden);
     setSearchParams({ ordenId: orden.id });
@@ -117,6 +142,63 @@ export function InspectionPage() {
     setSearchParams({});
   };
 
+  // 1. Aprobación Rápida Directa (Sin firmas ni trabas)
+  const handleAprobarDirecto = async (orden: OrdenIngreso) => {
+    try {
+      const updated = await ingresoService.updateEstado(
+        orden.id,
+        'APROBADO',
+        'Aprobado conforme en inspección'
+      );
+      setIngresos((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      if (selectedOrden?.id === orden.id) {
+        setSelectedOrden(updated);
+        await loadPruebasOrden(updated.id);
+      }
+    } catch {
+      // Ignorar
+    }
+  };
+
+  // 2. Abrir Modal de Rechazo
+  const handleOpenRechazoModal = (orden: OrdenIngreso) => {
+    setRechazoOrden(orden);
+    setRechazoMotivo(orden.motivoRechazo || orden.observaciones || '');
+    setRechazoEvidencia(orden.evidenciaRechazo || '');
+    setRechazoPruebas([]);
+    setModalRechazoOpen(true);
+  };
+
+  const toggleRechazoPrueba = (tipo: TipoPrueba) => {
+    setRechazoPruebas((prev) => 
+      prev.includes(tipo) ? prev.filter((t) => t !== tipo) : [...prev, tipo]
+    );
+  };
+
+  // 3. Confirmar Rechazo con Motivo, Evidencia y Pruebas
+  const handleGuardarRechazo = async () => {
+    if (!rechazoOrden || !rechazoMotivo.trim()) return;
+    setIsSavingRechazo(true);
+    try {
+      const updated = await ingresoService.rechazarOrden(rechazoOrden.id, {
+        motivo: rechazoMotivo.trim(),
+        evidencia: rechazoEvidencia.trim() || undefined,
+        pruebasRechazadas: rechazoPruebas
+      });
+      setIngresos((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      if (selectedOrden?.id === rechazoOrden.id) {
+        setSelectedOrden(updated);
+        await loadPruebasOrden(updated.id);
+      }
+      setModalRechazoOpen(false);
+    } catch {
+      // Ignorar
+    } finally {
+      setIsSavingRechazo(false);
+    }
+  };
+
+  // Mini modal para editar una prueba individual
   const handleOpenPruebaModal = (tipo: TipoPrueba, defaultEstado: EstadoPrueba = 'APROBADO') => {
     const existing = pruebas.find((p) => p.tipoPrueba === tipo);
     setSelectedTipoPrueba(tipo);
@@ -139,7 +221,6 @@ export function InspectionPage() {
       setModalPruebaOpen(false);
       await loadPruebasOrden(selectedOrden.id);
       
-      // Recargar la orden para reflejar cambios de estado
       const updatedOrden = await ingresoService.getIngresoById(selectedOrden.id);
       setSelectedOrden(updatedOrden);
       setIngresos((prev) => prev.map((item) => (item.id === updatedOrden.id ? updatedOrden : item)));
@@ -150,54 +231,33 @@ export function InspectionPage() {
     }
   };
 
-  const handleOpenDictamenModal = (estado: EstadoOrden) => {
-    setDictamenEstado(estado);
-    setDictamenObservaciones(selectedOrden?.observaciones || '');
-    setModalDictamenOpen(true);
-  };
-
-  const handleGuardarDictamen = async () => {
-    if (!selectedOrden) return;
-    setIsSavingDictamen(true);
-    try {
-      const updated = await ingresoService.updateEstado(
-        selectedOrden.id,
-        dictamenEstado,
-        dictamenObservaciones
-      );
-      setSelectedOrden(updated);
-      setIngresos((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
-      setModalDictamenOpen(false);
-    } catch {
-      // Ignorar
-    } finally {
-      setIsSavingDictamen(false);
-    }
-  };
-
   const getTestTitle = (tipo: TipoPrueba) => {
     switch (tipo) {
       case 'SENSORIAL_VISUAL':
         return {
           name: '1. Inspección Sensorial & Defectos Visuales',
+          short: 'Sensorial/Visual',
           icon: <Eye className="w-5 h-5 text-amber-400" />,
           desc: 'Luces, llantas, vidrios, espejos, carrocería, cinturones y chasis',
         };
       case 'FRENOS_SUSPENSION':
         return {
           name: '2. Frenómetro & Suspensión',
+          short: 'Frenos/Suspensión',
           icon: <Gauge className="w-5 h-5 text-rose-400" />,
           desc: 'Eficacia de frenado (Eje 1 y 2), freno de mano y desequilibrio dinámico',
         };
       case 'LUCES_ALINEACION':
         return {
           name: '3. Luxómetro & Alineación al Paso',
+          short: 'Luces/Alineación',
           icon: <Lightbulb className="w-5 h-5 text-yellow-400" />,
           desc: 'Intensidad en Kilocandelas (kcd), inclinación y desviación lateral',
         };
       case 'GASES_EMISIONES':
         return {
           name: '4. Emisiones de Gases & Opacidad / Ruido',
+          short: 'Gases/Emisiones',
           icon: <Wind className="w-5 h-5 text-cyan-400" />,
           desc: 'HC, CO, CO2, O2, opacímetro (humo diésel) y sonometría reglamentaria',
         };
@@ -259,17 +319,18 @@ export function InspectionPage() {
     }
   };
 
-  const pruebasCompletadas = pruebas.filter((p) => p.estado !== 'PENDIENTE').length;
-  const pruebasAprobadas = pruebas.filter((p) => p.estado === 'APROBADO').length;
-  const pruebasRechazadas = pruebas.filter((p) => p.estado === 'RECHAZADO').length;
-
   const filteredIngresos = ingresos.filter((i) => {
     const matchesSearch = 
       (i.vehiculo?.placa && i.vehiculo.placa.toLowerCase().includes(searchFilter.toLowerCase())) ||
       (i.vehiculo?.propietario?.nombresRazonSocial && i.vehiculo.propietario.nombresRazonSocial.toLowerCase().includes(searchFilter.toLowerCase())) ||
       (i.consecutivo && i.consecutivo.toString().includes(searchFilter));
 
-    const matchesEstado = filterEstado === 'TODOS' || i.estado === filterEstado;
+    const matchesEstado = 
+      filterEstado === 'TODOS' || 
+      (filterEstado === 'ABIERTOS' 
+        ? (i.estado === 'INGRESADO' || i.estado === 'EN_INSPECCION')
+        : i.estado === filterEstado);
+
     return matchesSearch && matchesEstado;
   });
 
@@ -281,13 +342,104 @@ export function InspectionPage() {
           <h1 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
             <span>Pista de Inspección Técnica</span>
             <span className="text-xs font-extrabold text-cda-yellow-400 bg-cda-yellow-400/10 px-2.5 py-0.5 rounded-full border border-cda-yellow-400/20">
-              Pruebas NTC 5375
+              Operación Ágil
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Control de 4 pruebas reglamentarias, trazabilidad de técnicos y dictamen oficial RTM
+            Aprobación directa por defecto o rechazo con registro de motivo, evidencia y plazo de 15 días
           </p>
         </div>
+      </div>
+
+      {/* Quick Filter Tabs (Pista / Abiertos / Aprobados / Rechazados / Facturados / Todos) */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+        <button
+          type="button"
+          onClick={() => handleSelectFiltro('ABIERTOS')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all border ${
+            filterEstado === 'ABIERTOS'
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-lg shadow-amber-500/10 ring-1 ring-amber-500/30'
+              : 'bg-cda-dark-900 text-slate-400 border-cda-dark-800 hover:text-slate-200 hover:border-cda-dark-700'
+          }`}
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+          </span>
+          <Wrench className="w-3.5 h-3.5 text-amber-400" />
+          <span>En Pista (Procesos Abiertos)</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+            filterEstado === 'ABIERTOS' ? 'bg-amber-500 text-black' : 'bg-cda-dark-800 text-amber-400'
+          }`}>
+            {totalAbiertos}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSelectFiltro('APROBADO')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all border ${
+            filterEstado === 'APROBADO'
+              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-500/30'
+              : 'bg-cda-dark-900 text-slate-400 border-cda-dark-800 hover:text-slate-200 hover:border-cda-dark-700'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Aprobados Hoy</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+            filterEstado === 'APROBADO' ? 'bg-emerald-500 text-black' : 'bg-cda-dark-800 text-emerald-400'
+          }`}>
+            {totalAprobados}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSelectFiltro('RECHAZADO')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all border ${
+            filterEstado === 'RECHAZADO'
+              ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-lg shadow-rose-500/10 ring-1 ring-rose-500/30'
+              : 'bg-cda-dark-900 text-slate-400 border-cda-dark-800 hover:text-slate-200 hover:border-cda-dark-700'
+          }`}
+        >
+          <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+          <span>Rechazados (Con Evidencia)</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+            filterEstado === 'RECHAZADO' ? 'bg-rose-500 text-white' : 'bg-cda-dark-800 text-rose-400'
+          }`}>
+            {totalRechazados}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSelectFiltro('FACTURADO')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all border ${
+            filterEstado === 'FACTURADO'
+              ? 'bg-blue-500/20 text-blue-300 border-blue-500/50 shadow-lg shadow-blue-500/10 ring-1 ring-blue-500/30'
+              : 'bg-cda-dark-900 text-slate-400 border-cda-dark-800 hover:text-slate-200 hover:border-cda-dark-700'
+          }`}
+        >
+          <Receipt className="w-3.5 h-3.5 text-blue-400" />
+          <span>Facturados</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+            filterEstado === 'FACTURADO' ? 'bg-blue-500 text-white' : 'bg-cda-dark-800 text-blue-400'
+          }`}>
+            {totalFacturados}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSelectFiltro('TODOS')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all border ${
+            filterEstado === 'TODOS'
+              ? 'bg-cda-yellow-500 text-black border-cda-yellow-500 font-extrabold shadow-lg shadow-cda-yellow-500/20'
+              : 'bg-cda-dark-900 text-slate-400 border-cda-dark-800 hover:text-slate-200 hover:border-cda-dark-700'
+          }`}
+        >
+          <span>Todos ({totalTodos})</span>
+        </button>
       </div>
 
       {/* Toolbar: Search and Filter */}
@@ -311,12 +463,10 @@ export function InspectionPage() {
             <Filter className="w-4 h-4 text-slate-400 shrink-0" />
             <select
               value={filterEstado}
-              onChange={(e) => {
-                setFilterEstado(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => handleSelectFiltro(e.target.value)}
               className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white font-medium focus:border-cda-yellow-500 focus:outline-none"
             >
+              <option value="ABIERTOS">En Pista (Procesos Abiertos) ({totalAbiertos})</option>
               <option value="TODOS">Todos los Estados ({ingresos.length})</option>
               <option value="INGRESADO">En Espera de Pista</option>
               <option value="EN_INSPECCION">En Pista de Pruebas</option>
@@ -344,59 +494,143 @@ export function InspectionPage() {
             ) : (
               filteredIngresos
                 .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-                .map((i) => (
-                  <div key={i.id} className="cda-glass rounded-2xl p-4 border border-cda-dark-700/80 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="p-2 rounded-xl bg-cda-yellow-500/10">
-                          {getCategoryIcon(i.vehiculo?.categoria)}
+                .map((i) => {
+                  const isOpen = i.estado === 'INGRESADO' || i.estado === 'EN_INSPECCION';
+                  const isRechazado = i.estado === 'RECHAZADO';
+
+                  return (
+                    <div key={i.id} className="cda-glass rounded-2xl p-4 border border-cda-dark-700/80 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 rounded-xl bg-cda-yellow-500/10">
+                            {getCategoryIcon(i.vehiculo?.categoria)}
+                          </div>
+                          <div>
+                            <span className="whitespace-nowrap inline-flex items-center px-2 py-0.5 rounded bg-cda-yellow-400 text-black font-mono font-black text-xs tracking-wider">
+                              {formatPlaca(i.vehiculo?.placa)}
+                            </span>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              {i.vehiculo?.marca} {i.vehiculo?.linea} • Turno #{i.consecutivo || 'S/N'}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <span className="whitespace-nowrap inline-flex items-center px-2 py-0.5 rounded bg-cda-yellow-400 text-black font-mono font-black text-xs tracking-wider">
-                            {formatPlaca(i.vehiculo?.placa)}
-                          </span>
-                          <p className="text-[10px] text-slate-400 mt-0.5">
-                            {i.vehiculo?.marca} {i.vehiculo?.linea} • Turno #{i.consecutivo || 'S/N'}
-                          </p>
-                        </div>
+                        <div>{getEstadoBadge(i.estado)}</div>
                       </div>
-                      <div>{getEstadoBadge(i.estado)}</div>
-                    </div>
 
-                    <div className="text-[11px] text-slate-300 space-y-0.5 pt-2 border-t border-cda-dark-800">
-                      <p>Prop: <strong className="text-white">{i.vehiculo?.propietario?.nombresRazonSocial || 'No asignado'}</strong></p>
-                      <p>Km: <span className="font-mono text-slate-200">{i.kilometraje?.toLocaleString('es-CO')} km</span></p>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-cda-dark-800 gap-2">
-                      <button
-                        onClick={() => setSelectedTicketOrden(i)}
-                        className="px-2.5 py-1.5 rounded-lg bg-cda-dark-800 text-slate-300 border border-cda-dark-700 text-xs flex items-center gap-1"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                        <span>Ticket</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleOpenPistaModal(i)}
-                        className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 shadow"
-                      >
-                        <Wrench className="w-3.5 h-3.5" />
-                        <span>Gestionar Pista</span>
-                      </button>
-
-                      {i.estado !== 'FACTURADO' && (
-                        <Link
-                          to={`/facturacion?ingresoId=${i.id}`}
-                          className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1"
-                        >
-                          <Receipt className="w-3.5 h-3.5" />
-                          <span>Facturar</span>
-                        </Link>
+                      {/* Rejection Highlight Banner on Mobile */}
+                      {isRechazado && (
+                        <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-200 text-xs space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold text-rose-300">
+                            <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                            <span>Motivo de Rechazo:</span>
+                          </div>
+                          <p className="text-[11px] text-slate-200 italic">
+                            "{i.motivoRechazo || i.observaciones || 'Defecto técnico detectado en pista'}"
+                          </p>
+                          {i.evidenciaRechazo && (
+                            <div className="flex items-center gap-1 text-[10px] text-amber-300 pt-0.5">
+                              <Camera className="w-3 h-3" />
+                              <span>Evidencia: {i.evidenciaRechazo}</span>
+                            </div>
+                          )}
+                        </div>
                       )}
+
+                      <div className="text-[11px] text-slate-300 space-y-0.5 pt-2 border-t border-cda-dark-800">
+                        <p>Prop: <strong className="text-white">{i.vehiculo?.propietario?.nombresRazonSocial || 'No asignado'}</strong></p>
+                        <p>Km: <span className="font-mono text-slate-200">{i.kilometraje?.toLocaleString('es-CO')} km</span></p>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center justify-between pt-2 border-t border-cda-dark-800 gap-1.5 flex-wrap">
+                        {isOpen ? (
+                          <>
+                            <button
+                              onClick={() => handleAprobarDirecto(i)}
+                              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-black px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1 shadow"
+                              title="Aprobar inspección directamente"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Aprobar</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleOpenRechazoModal(i)}
+                              className="flex-1 bg-rose-600 hover:bg-rose-500 text-white font-bold px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1 shadow"
+                              title="Rechazar con motivo y evidencia"
+                            >
+                              <ShieldAlert className="w-3.5 h-3.5" />
+                              <span>Rechazar</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleOpenPistaModal(i)}
+                              className="p-1.5 rounded-lg bg-cda-dark-800 text-slate-300 border border-cda-dark-700 hover:text-white"
+                              title="Detalle completo"
+                            >
+                              <Wrench className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : isRechazado ? (
+                          <>
+                            <button
+                              onClick={() => {
+                                navigate(`/recepcion?placa=${i.vehiculo?.placa}&ordenPadreId=${i.id}&esReinspeccion=true`);
+                              }}
+                              className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-extrabold px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1 shadow"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>2da Revisión ($0)</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleOpenPistaModal(i)}
+                              className="px-2.5 py-1.5 rounded-lg bg-cda-dark-800 text-slate-300 border border-cda-dark-700 text-xs"
+                            >
+                              Ver Detalle
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleOpenPistaModal(i)}
+                              className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 shadow"
+                            >
+                              <Wrench className="w-3.5 h-3.5" />
+                              <span>Ver Detalle</span>
+                            </button>
+
+                            {!i.facturado && i.estado !== 'FACTURADO' ? (
+                              <Link
+                                to={`/facturacion?ingresoId=${i.id}`}
+                                className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 shadow"
+                              >
+                                <Receipt className="w-3.5 h-3.5" />
+                                <span>Facturar</span>
+                              </Link>
+                            ) : (
+                              <Link
+                                to={`/facturacion?ingresoId=${i.id}`}
+                                className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 shadow"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Facturado</span>
+                              </Link>
+                            )}
+                          </>
+                        )}
+
+                        <button
+                          onClick={() => setSelectedTicketOrden(i)}
+                          className="p-1.5 rounded-lg bg-cda-dark-800 text-slate-300 border border-cda-dark-700 text-xs"
+                          title="Ticket"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
             )}
           </div>
 
@@ -409,7 +643,7 @@ export function InspectionPage() {
                     <th className="p-3.5 font-semibold">Turno / Vehículo</th>
                     <th className="p-3.5 font-semibold">Propietario & Contacto</th>
                     <th className="p-3.5 font-semibold">Kilometraje & Servicio</th>
-                    <th className="p-3.5 font-semibold">Estado en Pista</th>
+                    <th className="p-3.5 font-semibold">Estado / Dictamen</th>
                     <th className="p-3.5 font-semibold text-right">Acciones Operativas</th>
                   </tr>
                 </thead>
@@ -423,70 +657,144 @@ export function InspectionPage() {
                   ) : (
                     filteredIngresos
                       .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-                      .map((i) => (
-                        <tr key={i.id} className="hover:bg-cda-dark-800/40 transition-colors">
-                          <td className="p-3.5">
-                            <div className="flex items-center gap-2.5">
-                              <div className="p-2 rounded-xl bg-cda-yellow-500/10">
-                                {getCategoryIcon(i.vehiculo?.categoria)}
+                      .map((i) => {
+                        const isOpen = i.estado === 'INGRESADO' || i.estado === 'EN_INSPECCION';
+                        const isRechazado = i.estado === 'RECHAZADO';
+
+                        return (
+                          <tr key={i.id} className="hover:bg-cda-dark-800/40 transition-colors">
+                            <td className="p-3.5">
+                              <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-cda-yellow-500/10">
+                                  {getCategoryIcon(i.vehiculo?.categoria)}
+                                </div>
+                                <div>
+                                  <span className="whitespace-nowrap inline-flex items-center px-2 py-0.5 rounded bg-cda-yellow-400 text-black font-mono font-black text-xs tracking-wider">
+                                    {formatPlaca(i.vehiculo?.placa)}
+                                  </span>
+                                  <p className="text-[10px] text-slate-400 mt-0.5">
+                                    {i.vehiculo?.marca} {i.vehiculo?.linea} ({i.vehiculo?.modelo}) • Turno #{i.consecutivo || 'S/N'}
+                                  </p>
+                                </div>
                               </div>
-                              <div>
-                                <span className="whitespace-nowrap inline-flex items-center px-2 py-0.5 rounded bg-cda-yellow-400 text-black font-mono font-black text-xs tracking-wider">
-                                  {formatPlaca(i.vehiculo?.placa)}
-                                </span>
-                                <p className="text-[10px] text-slate-400 mt-0.5">
-                                  {i.vehiculo?.marca} {i.vehiculo?.linea} ({i.vehiculo?.modelo}) • Turno #{i.consecutivo || 'S/N'}
-                                </p>
-                              </div>
-                            </div>
-                          </td>
+                            </td>
 
-                          <td className="p-3.5">
-                            <p className="font-bold text-white">{i.vehiculo?.propietario?.nombresRazonSocial || 'No asignado'}</p>
-                            <p className="text-[10px] font-mono text-slate-400">
-                              {formatPhone(i.vehiculo?.propietario?.celular)}
-                            </p>
-                          </td>
+                            <td className="p-3.5">
+                              <p className="font-bold text-white">{i.vehiculo?.propietario?.nombresRazonSocial || 'No asignado'}</p>
+                              <p className="text-[10px] font-mono text-slate-400">
+                                {formatPhone(i.vehiculo?.propietario?.celular)}
+                              </p>
+                            </td>
 
-                          <td className="p-3.5">
-                            <p className="font-mono text-slate-200">{i.kilometraje?.toLocaleString('es-CO')} km</p>
-                            <p className="text-[10px] text-slate-400">{i.tipoServicio}</p>
-                          </td>
+                            <td className="p-3.5">
+                              <p className="font-mono text-slate-200">{i.kilometraje?.toLocaleString('es-CO')} km</p>
+                              <p className="text-[10px] text-slate-400">{i.tipoServicio}</p>
+                            </td>
 
-                          <td className="p-3.5">
-                            {getEstadoBadge(i.estado)}
-                          </td>
+                            <td className="p-3.5">
+                              <div>{getEstadoBadge(i.estado)}</div>
+                              {isRechazado && (
+                                <div className="mt-1 text-[10px] text-rose-300 max-w-xs truncate" title={i.motivoRechazo || i.observaciones}>
+                                  <strong>Motivo:</strong> {i.motivoRechazo || i.observaciones || 'Defecto técnico'}
+                                </div>
+                              )}
+                              {isRechazado && i.evidenciaRechazo && (
+                                <div className="text-[9px] text-amber-300 flex items-center gap-1 mt-0.5">
+                                  <Camera className="w-3 h-3" />
+                                  <span className="truncate max-w-[180px]">Evidencia: {i.evidenciaRechazo}</span>
+                                </div>
+                              )}
+                            </td>
 
-                          <td className="p-3.5 text-right space-x-1.5">
-                            <button
-                              onClick={() => setSelectedTicketOrden(i)}
-                              className="inline-flex items-center gap-1 bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 px-2.5 py-1.5 rounded-lg border border-cda-dark-700 text-xs transition-colors"
-                              title="Imprimir ticket de turno"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                              <span>Ticket</span>
-                            </button>
+                            <td className="p-3.5 text-right space-x-1.5">
+                              {isOpen ? (
+                                <>
+                                  <button
+                                    onClick={() => handleAprobarDirecto(i)}
+                                    className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white font-black px-3 py-1.5 rounded-lg text-xs shadow transition-all"
+                                    title="Aprobar inspección por defecto"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Aprobar</span>
+                                  </button>
 
-                            <button
-                              onClick={() => handleOpenPistaModal(i)}
-                              className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition-all"
-                            >
-                              <Wrench className="w-3.5 h-3.5" />
-                              <span>Gestionar Pruebas</span>
-                            </button>
+                                  <button
+                                    onClick={() => handleOpenRechazoModal(i)}
+                                    className="inline-flex items-center gap-1 bg-rose-600 hover:bg-rose-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition-all"
+                                    title="Rechazar con motivo y evidencia"
+                                  >
+                                    <ShieldAlert className="w-3.5 h-3.5" />
+                                    <span>Rechazar</span>
+                                  </button>
 
-                            {i.estado !== 'FACTURADO' && (
-                              <Link
-                                to={`/facturacion?ingresoId=${i.id}`}
-                                className="inline-flex items-center gap-1 bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-3 py-1.5 rounded-lg text-xs shadow-md shadow-cda-yellow-500/10 transition-all"
+                                  <button
+                                    onClick={() => handleOpenPistaModal(i)}
+                                    className="inline-flex items-center gap-1 bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 px-2.5 py-1.5 rounded-lg border border-cda-dark-700 text-xs transition-colors"
+                                    title="Ver detalle"
+                                  >
+                                    <Wrench className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              ) : isRechazado ? (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      navigate(`/recepcion?placa=${i.vehiculo?.placa}&ordenPadreId=${i.id}&esReinspeccion=true`);
+                                    }}
+                                    className="inline-flex items-center gap-1 bg-amber-500 hover:bg-amber-400 text-black font-extrabold px-3 py-1.5 rounded-lg text-xs shadow transition-all"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                    <span>2da Revisión ($0)</span>
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleOpenPistaModal(i)}
+                                    className="inline-flex items-center gap-1 bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 px-2.5 py-1.5 rounded-lg border border-cda-dark-700 text-xs"
+                                  >
+                                    <span>Detalle</span>
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => handleOpenPistaModal(i)}
+                                    className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow transition-all"
+                                  >
+                                    <Wrench className="w-3.5 h-3.5" />
+                                    <span>Detalle</span>
+                                  </button>
+
+                                  {!i.facturado && i.estado !== 'FACTURADO' ? (
+                                    <Link
+                                      to={`/facturacion?ingresoId=${i.id}`}
+                                      className="inline-flex items-center gap-1 bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-3 py-1.5 rounded-lg text-xs shadow-md shadow-cda-yellow-500/10 transition-all"
+                                    >
+                                      <Receipt className="w-3.5 h-3.5" />
+                                      <span>Facturar</span>
+                                    </Link>
+                                  ) : (
+                                    <Link
+                                      to={`/facturacion?ingresoId=${i.id}`}
+                                      className="inline-flex items-center gap-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 font-bold px-3 py-1.5 rounded-lg text-xs shadow-md transition-all"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      <span>Facturado</span>
+                                    </Link>
+                                  )}
+                                </>
+                              )}
+
+                              <button
+                                onClick={() => setSelectedTicketOrden(i)}
+                                className="inline-flex items-center gap-1 bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 px-2.5 py-1.5 rounded-lg border border-cda-dark-700 text-xs transition-colors"
+                                title="Imprimir ticket"
                               >
-                                <Receipt className="w-3.5 h-3.5" />
-                                <span>Facturar</span>
-                              </Link>
-                            )}
-                          </td>
-                        </tr>
-                      ))
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                   )}
                 </tbody>
               </table>
@@ -505,7 +813,7 @@ export function InspectionPage() {
         </div>
       )}
 
-      {/* POP-UP / MODAL PRINCIPAL: GESTIÓN DE LAS 4 PRUEBAS EN PISTA */}
+      {/* POP-UP / MODAL PRINCIPAL: GESTIÓN DE LA ORDEN Y PRUEBAS EN PISTA */}
       {modalPistaOpen && selectedOrden && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
           <div className="cda-glass rounded-3xl max-w-4xl w-full border border-cda-yellow-500/40 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95">
@@ -540,42 +848,53 @@ export function InspectionPage() {
               </button>
             </div>
 
-            {/* Body con Scroll Interno si es necesario */}
+            {/* Body */}
             <div className="p-5 sm:p-6 overflow-y-auto space-y-5">
-              {/* Banner Informativo si es Reinspección */}
-              {selectedOrden.esReinspeccion && (
-                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-2 shadow-lg">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <RotateCcw className="w-5 h-5 text-amber-400 shrink-0" />
-                      <div>
-                        <div className="font-bold text-white text-sm">
-                          2da Revisión / Reinspección en Pista (Tarifa $0 COP)
-                        </div>
-                        <div className="text-[11px] text-amber-200">
-                          Asociada a Turno Inicial <strong className="font-mono text-amber-400">#{selectedOrden.consecutivoOrdenPadre || 'Previo'}</strong>
-                        </div>
+              {/* Banner Destacado si fue RECHAZADO con Detalle de Motivo y Evidencia */}
+              {selectedOrden.estado === 'RECHAZADO' && (
+                <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs shadow-xl space-y-3 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/40 shrink-0 mt-0.5">
+                        <ShieldAlert className="w-6 h-6" />
                       </div>
-                    </div>
-                    <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 text-center">
-                      REINSPECCIÓN ACTIVA
-                    </span>
-                  </div>
-                  {selectedOrden.pruebasRechazadasPrevias && selectedOrden.pruebasRechazadasPrevias.length > 0 && (
-                    <div className="p-2.5 rounded-xl bg-cda-dark-900/90 border border-amber-500/20 text-[11px] space-y-1">
-                      <span className="font-bold text-amber-400">Pruebas Reprobadas en el 1er Intento:</span>
-                      <div className="flex flex-wrap gap-1.5 pt-0.5">
-                        {selectedOrden.pruebasRechazadasPrevias.map((p) => (
-                          <span key={p} className="bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded-md font-bold text-[10px]">
-                            {p.replace('_', ' ')}
+                      <div className="space-y-1">
+                        <div className="font-black text-white text-sm flex items-center gap-2">
+                          <span>Revisión Técnico-Mecánica Rechazada</span>
+                          <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 px-2 py-0.5 rounded text-[10px] font-bold">
+                            Plazo 15 Días
                           </span>
-                        ))}
+                        </div>
+                        <p className="text-xs text-rose-200">
+                          <strong className="text-white">Motivo del Rechazo:</strong> {selectedOrden.motivoRechazo || selectedOrden.observaciones || 'No especificado'}
+                        </p>
+                        {selectedOrden.evidenciaRechazo && (
+                          <p className="text-xs text-amber-300 flex items-center gap-1.5 pt-0.5">
+                            <Camera className="w-3.5 h-3.5" />
+                            <strong>Evidencia Registrada:</strong> 
+                            <span className="font-mono bg-cda-dark-900 px-2 py-0.5 rounded text-white border border-amber-500/30">
+                              {selectedOrden.evidenciaRechazo}
+                            </span>
+                          </p>
+                        )}
+                        <p className="text-[11px] text-slate-300 pt-1">
+                          Quedan <strong className="text-white">{selectedOrden.diasRestantesReinspeccion ?? 15} días calendario</strong> para presentarse a 2da revisión sin costo ($0 COP).
+                        </p>
                       </div>
-                      <p className="text-slate-400 text-[10px]">
-                        Las pruebas aprobadas inicialmente se han precargado para agilizar el proceso en pista.
-                      </p>
                     </div>
-                  )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleClosePistaModal();
+                        navigate(`/recepcion?placa=${selectedOrden.vehiculo?.placa}&ordenPadreId=${selectedOrden.id}&esReinspeccion=true`);
+                      }}
+                      className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shrink-0"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span>Iniciar 2da Revisión ($0)</span>
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -592,103 +911,32 @@ export function InspectionPage() {
                           ¡Revisión Técnico-Mecánica Aprobada!
                         </div>
                         <div className="text-[11px] text-emerald-200">
-                          Vigencia Legal de 1 Año Certificada • Información transmitida ante RUNT y SICOV
+                          Vehículo apto para certificación RTM oficial • Listo para facturación y entrega
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <Link
-                        to={`/facturacion?ingresoId=${selectedOrden.id}`}
-                        className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-cda-yellow-500/20 transition-all"
-                      >
-                        <Receipt className="w-4 h-4" />
-                        <span>Pasar a Facturación</span>
-                      </Link>
-
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTicketOrden(selectedOrden)}
-                        className="bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 border border-cda-dark-700 font-bold px-3 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition-all"
-                      >
-                        <Printer className="w-4 h-4 text-cda-yellow-400" />
-                        <span>Ticket / Certificado</span>
-                      </button>
+                      {!selectedOrden.facturado ? (
+                        <Link
+                          to={`/facturacion?ingresoId=${selectedOrden.id}`}
+                          className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-cda-yellow-500/20 transition-all"
+                        >
+                          <Receipt className="w-4 h-4" />
+                          <span>Pasar a Facturación</span>
+                        </Link>
+                      ) : (
+                        <Link
+                          to={`/facturacion?ingresoId=${selectedOrden.id}`}
+                          className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 font-extrabold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg transition-all"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Ver Factura</span>
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </div>
-              )}
-
-              {/* Banner de Estado RECHAZADO con Cronómetro de 15 Días */}
-              {selectedOrden.estado === 'RECHAZADO' && (
-                selectedOrden.esReinspeccionVigente !== false ? (
-                  <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs shadow-xl space-y-3 animate-fade-in">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/40 shrink-0">
-                          <Clock className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <div className="font-black text-white text-sm flex items-center gap-2">
-                            <span>Plazo de 15 Días para 2da Revisión Gratuita</span>
-                            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded text-[10px] font-bold">
-                              Día {(selectedOrden.diasTranscurridosRechazo ?? 0) + 1} de 15
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-amber-200 mt-0.5">
-                            Quedan <strong className="text-white">{selectedOrden.diasRestantesReinspeccion ?? 15} días calendario</strong> de gracia legal para reingresar a pista sin costo adicional ($0 COP).
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleClosePistaModal();
-                            navigate(`/recepcion?placa=${selectedOrden.vehiculo?.placa}&ordenPadreId=${selectedOrden.id}&esReinspeccion=true`);
-                          }}
-                          className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition-all"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                          <span>Iniciar 2da Revisión ($0)</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs shadow-xl space-y-3 animate-fade-in">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/40 shrink-0">
-                          <ShieldAlert className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <div className="font-black text-white text-sm">
-                            Plazo Legal de 15 Días Calendario Vencido
-                          </div>
-                          <div className="text-[11px] text-rose-200 mt-0.5">
-                            El beneficio de reinspección gratuita ha expirado conforme a la Resolución 3768. Cualquier reintento requiere el cobro de la tarifa plena (100%).
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleClosePistaModal();
-                            navigate(`/recepcion?placa=${selectedOrden.vehiculo?.placa}`);
-                          }}
-                          className="bg-rose-600 hover:bg-rose-500 text-white font-extrabold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-rose-600/20 transition-all"
-                        >
-                          <ArrowRight className="w-4 h-4" />
-                          <span>Nueva Revisión (Con Cobro)</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )
               )}
 
               {/* Propietario & Conductor Info */}
@@ -712,37 +960,51 @@ export function InspectionPage() {
                 </div>
               </div>
 
-              {/* Barra de Progreso de Pruebas */}
-              <div className="space-y-1.5 p-4 rounded-2xl bg-cda-dark-900/60 border border-cda-dark-800">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-white">Progreso de Pruebas Reglamentarias:</span>
-                  <span className="font-mono font-black text-cda-yellow-400">
-                    {pruebasCompletadas} de 4 completadas ({Math.round((pruebasCompletadas / 4) * 100)}%)
-                  </span>
-                </div>
+              {/* PANEL DE DECISIÓN OPERATIVA INMEDIATA (Aprobar o Rechazar con Motivo) */}
+              {(selectedOrden.estado === 'INGRESADO' || selectedOrden.estado === 'EN_INSPECCION') && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-cda-dark-900 via-cda-dark-850 to-cda-dark-900 border border-cda-yellow-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
+                  <div>
+                    <h3 className="font-black text-white text-sm flex items-center gap-1.5">
+                      <span>Dictamen Operativo en Pista</span>
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.2 rounded-full font-bold">
+                        Aceptado por defecto
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Si el vehículo está en orden, pulsa <strong>Aprobar</strong>. Si presenta fallas, pulsa <strong>Rechazar</strong> para detallar motivo y evidencia.
+                    </p>
+                  </div>
 
-                <div className="w-full bg-cda-dark-950 h-3 rounded-full overflow-hidden border border-cda-dark-800 flex">
-                  <div
-                    className={`h-full transition-all duration-500 ${
-                      pruebasRechazadas > 0
-                        ? 'bg-rose-500'
-                        : pruebasAprobadas === 4
-                        ? 'bg-emerald-500'
-                        : 'bg-gradient-to-r from-cda-yellow-500 to-amber-500'
-                    }`}
-                    style={{ width: `${(pruebasCompletadas / 4) * 100}%` }}
-                  />
-                </div>
-              </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleAprobarDirecto(selectedOrden)}
+                      className="bg-emerald-500 hover:bg-emerald-400 text-black font-black px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 transition-all"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>✓ Aprobar Vehículo</span>
+                    </button>
 
-              {/* Las 4 Pruebas Reglamentarias en Grid */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenRechazoModal(selectedOrden)}
+                      className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-rose-600/20 transition-all"
+                    >
+                      <ShieldAlert className="w-4 h-4" />
+                      <span>✕ Rechazar con Motivo</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Pruebas Técnicas Opcionales / Referenciales */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-white uppercase tracking-wider">
-                    4 Pruebas Reglamentarias NTC 5375
+                    Pruebas en Pista (Opcionales para especificar motivo)
                   </span>
                   <span className="text-[10px] text-slate-400">
-                    Registra el veredicto y observaciones por técnico responsable
+                    Por defecto todas quedan aceptadas a menos que se registre un rechazo puntual
                   </span>
                 </div>
 
@@ -750,21 +1012,18 @@ export function InspectionPage() {
                   {(['SENSORIAL_VISUAL', 'FRENOS_SUSPENSION', 'LUCES_ALINEACION', 'GASES_EMISIONES'] as TipoPrueba[]).map((tipo) => {
                     const prueba = pruebas.find((p) => p.tipoPrueba === tipo);
                     const meta = getTestTitle(tipo);
-                    const isAprobada = prueba?.estado === 'APROBADO';
+                    const isAprobada = prueba?.estado === 'APROBADO' || selectedOrden.estado === 'APROBADO';
                     const isRechazada = prueba?.estado === 'RECHAZADO';
-                    const isPendiente = !prueba || prueba.estado === 'PENDIENTE';
-                    const wasReprobadaPreviamente = selectedOrden.pruebasRechazadasPrevias?.includes(tipo);
+                    const isPendiente = (!prueba || prueba.estado === 'PENDIENTE') && selectedOrden.estado !== 'APROBADO';
 
                     return (
                       <div
                         key={tipo}
-                        className={`p-4 rounded-2xl border transition-all space-y-3 ${
-                          wasReprobadaPreviamente && isPendiente
-                            ? 'bg-amber-950/30 border-amber-500/60 shadow-md ring-1 ring-amber-500/30'
+                        className={`p-3.5 rounded-2xl border transition-all space-y-2.5 ${
+                          isRechazada
+                            ? 'bg-rose-950/20 border-rose-500/40 shadow-sm'
                             : isAprobada
                             ? 'bg-emerald-950/20 border-emerald-500/40 shadow-sm'
-                            : isRechazada
-                            ? 'bg-rose-950/20 border-rose-500/40 shadow-sm'
                             : 'cda-glass border-cda-dark-700/80 hover:border-cda-dark-600'
                         }`}
                       >
@@ -780,108 +1039,44 @@ export function InspectionPage() {
                           </div>
 
                           <div>
-                            {isAprobada && (
-                              <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-2 py-0.5 rounded-full text-[10px] font-black">
-                                APROBADA
-                              </span>
-                            )}
                             {isRechazada && (
                               <span className="bg-rose-500/20 text-rose-400 border border-rose-500/40 px-2 py-0.5 rounded-full text-[10px] font-black">
                                 RECHAZADA
                               </span>
                             )}
+                            {isAprobada && !isRechazada && (
+                              <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-2 py-0.5 rounded-full text-[10px] font-black">
+                                ACEPTADA
+                              </span>
+                            )}
                             {isPendiente && (
                               <span className="bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full text-[10px] font-bold">
-                                {wasReprobadaPreviamente ? 'REINSPECCIÓN' : 'PENDIENTE'}
+                                EN PISTA
                               </span>
                             )}
                           </div>
                         </div>
 
-                        {/* Responsable & Observaciones */}
-                        {prueba && prueba.estado !== 'PENDIENTE' && (
-                          <div className="p-2.5 rounded-xl bg-cda-dark-900/80 border border-cda-dark-800 text-[11px] space-y-1">
-                            <div className="flex items-center justify-between text-slate-400">
-                              <span className="flex items-center gap-1">
-                                <User className="w-3 h-3 text-cda-yellow-400" />
-                                <strong className="text-white">{prueba.usuarioResponsableNombre || 'Técnico'}</strong> ({prueba.usuarioResponsableRol || 'PISTA'})
-                              </span>
-                              <span className="font-mono text-[10px]">
-                                {prueba.fechaEjecucion ? new Date(prueba.fechaEjecucion).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''}
-                              </span>
-                            </div>
-                            {prueba.observaciones && (
-                              <p className="text-slate-300 italic text-[10px]">"{prueba.observaciones}"</p>
-                            )}
+                        {prueba?.observaciones && (
+                          <div className="p-2 rounded-xl bg-cda-dark-900/80 border border-cda-dark-800 text-[10px] text-slate-300 italic">
+                            "{prueba.observaciones}"
                           </div>
                         )}
 
-                        {/* Action Buttons */}
-                        <div className="flex gap-2 pt-1">
+                        {/* Botón rápido para marcar rechazo individual si se desea */}
+                        <div className="flex justify-end pt-1">
                           <button
                             type="button"
-                            onClick={() => handleOpenPruebaModal(tipo, 'APROBADO')}
-                            className="w-1/2 py-2 rounded-xl bg-emerald-600/90 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1 transition-all"
+                            onClick={() => handleOpenPruebaModal(tipo, isRechazada ? 'APROBADO' : 'RECHAZADO')}
+                            className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 font-semibold"
                           >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>✓ Aprobar</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleOpenPruebaModal(tipo, 'RECHAZADO')}
-                            className="w-1/2 py-2 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white font-bold text-xs flex items-center justify-center gap-1 transition-all"
-                          >
-                            <ShieldAlert className="w-3.5 h-3.5" />
-                            <span>✕ Rechazar</span>
+                            <Wrench className="w-3 h-3 text-cda-yellow-400" />
+                            <span>Ajustar prueba</span>
                           </button>
                         </div>
                       </div>
                     );
                   })}
-                </div>
-              </div>
-
-              {/* Panel de Dictamen Final */}
-              <div className="p-5 rounded-2xl bg-cda-dark-900 border border-cda-yellow-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <span className="text-xs font-bold text-white uppercase tracking-wider block">
-                    Dictamen Final & Certificación RTM
-                  </span>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {pruebasCompletadas === 4
-                      ? 'Las 4 pruebas técnicas han finalizado. Emite el veredicto oficial.'
-                      : 'Puedes emitir dictamen inmediato o continuar completando las pruebas.'}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {canCertify ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenDictamenModal('APROBADO')}
-                        className="bg-emerald-500 hover:bg-emerald-400 text-black font-black px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-500/20"
-                      >
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>✓ Aprobar RTM Oficial</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleOpenDictamenModal('RECHAZADO')}
-                        className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-rose-600/20"
-                      >
-                        <ShieldAlert className="w-4 h-4" />
-                        <span>✕ Rechazar RTM</span>
-                      </button>
-                    </>
-                  ) : (
-                    <div className="bg-cda-dark-950 border border-cda-dark-800 px-3.5 py-2.5 rounded-xl text-xs text-slate-400 flex items-center gap-2">
-                      <ShieldCheck className="w-4 h-4 text-amber-400" />
-                      <span>Firma y dictamen exclusivo del <strong>Director Técnico</strong> o <strong>Administrador</strong></span>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -893,7 +1088,7 @@ export function InspectionPage() {
                 onClick={handleClosePistaModal}
                 className="px-4 py-2 rounded-xl bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 font-bold text-xs"
               >
-                Volver a la Lista de Vehículos
+                Volver a la Lista
               </button>
 
               <div className="flex items-center gap-2">
@@ -906,13 +1101,21 @@ export function InspectionPage() {
                   <span>Ticket</span>
                 </button>
 
-                {selectedOrden.estado !== 'FACTURADO' && (
+                {!selectedOrden.facturado && selectedOrden.estado !== 'FACTURADO' ? (
                   <Link
                     to={`/facturacion?ingresoId=${selectedOrden.id}`}
                     className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow"
                   >
                     <Receipt className="w-4 h-4" />
                     <span>Ir a Facturación</span>
+                  </Link>
+                ) : (
+                  <Link
+                    to={`/facturacion?ingresoId=${selectedOrden.id}`}
+                    className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Factura Emitida</span>
                   </Link>
                 )}
               </div>
@@ -921,7 +1124,143 @@ export function InspectionPage() {
         </div>
       )}
 
-      {/* Mini-Modal de Registro / Actualización de Prueba Específica */}
+      {/* ========================================================================= */}
+      {/* MODAL ESPECIALIZADO: REGISTRAR RECHAZO CON EVIDENCIA Y MOTIVO */}
+      {/* ========================================================================= */}
+      {modalRechazoOpen && rechazoOrden && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="cda-glass rounded-3xl p-6 max-w-lg w-full border border-rose-500/50 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-cda-dark-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-white text-base">
+                    Registrar Rechazo de Inspección
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Deja constancia del motivo técnico y evidencia del defecto
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setModalRechazoOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Placa y Vehículo */}
+            <div className="p-3 rounded-2xl bg-cda-dark-900 border border-cda-dark-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="whitespace-nowrap inline-flex items-center px-2.5 py-0.5 rounded-lg bg-cda-yellow-400 text-black font-mono font-black text-sm tracking-wider">
+                  {formatPlaca(rechazoOrden.vehiculo?.placa)}
+                </span>
+                <span className="text-xs text-slate-300 font-semibold">
+                  {rechazoOrden.vehiculo?.marca} {rechazoOrden.vehiculo?.linea}
+                </span>
+              </div>
+              <span className="text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 px-2 py-0.5 rounded-full">
+                15 Días de Gracia
+              </span>
+            </div>
+
+            {/* 1. Selección de Pruebas Fallidas (Opcional) */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-200">
+                1. ¿En cuáles pruebas se detectó el defecto? (Opcional):
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['SENSORIAL_VISUAL', 'FRENOS_SUSPENSION', 'LUCES_ALINEACION', 'GASES_EMISIONES'] as TipoPrueba[]).map((tipo) => {
+                  const meta = getTestTitle(tipo);
+                  const isSelected = rechazoPruebas.includes(tipo);
+
+                  return (
+                    <button
+                      key={tipo}
+                      type="button"
+                      onClick={() => toggleRechazoPrueba(tipo)}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all text-left ${
+                        isSelected
+                          ? 'bg-rose-500/25 text-rose-200 border-rose-500/60 shadow ring-1 ring-rose-500/40'
+                          : 'bg-cda-dark-900 border-cda-dark-800 text-slate-400 hover:text-white hover:border-cda-dark-700'
+                      }`}
+                    >
+                      <div className={`w-4 h-4 rounded-md flex items-center justify-center border text-[10px] ${
+                        isSelected ? 'bg-rose-500 text-white border-rose-400' : 'border-slate-600'
+                      }`}>
+                        {isSelected ? '✓' : ''}
+                      </div>
+                      <span className="text-[11px] truncate">{meta.short}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Descripción / Motivo del Rechazo (Obligatorio) */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-200 flex items-center justify-between">
+                <span>2. Descripción detallada del motivo del rechazo <span className="text-rose-400">*</span></span>
+                <span className="text-[10px] text-slate-400 font-normal">Obligatorio</span>
+              </label>
+              <textarea
+                value={rechazoMotivo}
+                onChange={(e) => setRechazoMotivo(e.target.value)}
+                placeholder="Ejemplo: Desgaste severo en banda de rodadura de llanta delantera izquierda (<1.6 mm) y fuga visible de gases en ducto de escape."
+                rows={3}
+                className="w-full bg-cda-dark-900 border border-cda-dark-700 text-slate-200 text-xs rounded-xl p-3 focus:border-rose-500 focus:outline-none resize-none placeholder:text-slate-500"
+              />
+            </div>
+
+            {/* 3. Evidencia / Registro Fotográfico (Opcional) */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <Camera className="w-3.5 h-3.5 text-cda-yellow-400" />
+                <span>3. Evidencia / Soporte Fotográfico o Referencia:</span>
+              </label>
+              <input
+                type="text"
+                value={rechazoEvidencia}
+                onChange={(e) => setRechazoEvidencia(e.target.value)}
+                placeholder="Ej: Foto_Llanta_Del_Izq.jpg o URL de imagen o código de defecto #F-102"
+                className="w-full bg-cda-dark-900 border border-cda-dark-700 text-slate-200 text-xs rounded-xl px-3 py-2.5 focus:border-cda-yellow-500 focus:outline-none placeholder:text-slate-500 font-mono"
+              />
+              <p className="text-[10px] text-slate-400">
+                Puedes registrar el nombre del archivo de la foto tomada en pista, una URL o la referencia del defecto.
+              </p>
+            </div>
+
+            {/* Botones de Acción */}
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalRechazoOpen(false)}
+                className="w-1/3 py-2.5 rounded-xl bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 font-bold text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleGuardarRechazo}
+                disabled={isSavingRechazo || !rechazoMotivo.trim()}
+                className="w-2/3 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-rose-600/30 transition-all"
+              >
+                {isSavingRechazo ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <ShieldAlert className="w-4 h-4" />
+                )}
+                <span>Confirmar Rechazo (15 Días)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mini-Modal de Prueba Específica (Opcional) */}
       {modalPruebaOpen && selectedTipoPrueba && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="cda-glass rounded-3xl p-6 max-w-md w-full border border-cda-yellow-500/40 shadow-2xl space-y-4">
@@ -929,7 +1268,7 @@ export function InspectionPage() {
               <div className="flex items-center gap-2">
                 <Wrench className="w-5 h-5 text-cda-yellow-400" />
                 <h3 className="font-black text-white text-base">
-                  Registrar Resultado de Prueba
+                  Ajustar Prueba Específica
                 </h3>
               </div>
               <button
@@ -949,7 +1288,6 @@ export function InspectionPage() {
               </p>
             </div>
 
-            {/* Selector de Resultado */}
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
@@ -961,7 +1299,7 @@ export function InspectionPage() {
                 }`}
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>✓ Aprobada</span>
+                <span>✓ Aceptada</span>
               </button>
 
               <button
@@ -974,19 +1312,18 @@ export function InspectionPage() {
                 }`}
               >
                 <ShieldAlert className="w-4 h-4" />
-                <span>✕ Rechazada</span>
+                <span>✕ Reprobada</span>
               </button>
             </div>
 
-            {/* Observaciones Técnicas */}
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                Observaciones Técnicas / Parámetros Medidos (Opcional):
+                Observaciones Técnicas (Opcional):
               </label>
               <textarea
                 value={pruebaObservaciones}
                 onChange={(e) => setPruebaObservaciones(e.target.value)}
-                placeholder={pruebaEstado === 'APROBADO' ? 'Ej. Eficacia 58%, Desequilibrio 12% (Dentro de norma)' : 'Ej. Fuga en línea de escape, CO: 4.8% (Excede límite 3.5%)'}
+                placeholder="Parámetros medidos o notas..."
                 rows={3}
                 className="w-full bg-cda-dark-900 border border-cda-dark-700 text-slate-200 text-xs rounded-xl p-3 focus:border-cda-yellow-500 focus:outline-none resize-none"
               />
@@ -1007,70 +1344,7 @@ export function InspectionPage() {
                 className="w-2/3 py-2.5 rounded-xl bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-cda-yellow-500/20"
               >
                 {isSavingPrueba ? <Loader2 className="w-4 h-4 animate-spin text-black" /> : <CheckCircle2 className="w-4 h-4" />}
-                <span>Guardar Prueba</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Dictamen Final */}
-      {modalDictamenOpen && selectedOrden && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="cda-glass rounded-3xl p-6 max-w-md w-full border border-cda-yellow-500/40 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-cda-dark-800">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-cda-yellow-400" />
-                <h3 className="font-black text-white text-base">
-                  Dictamen Final de Inspección
-                </h3>
-              </div>
-              <button
-                onClick={() => setModalDictamenOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-3 rounded-2xl bg-cda-dark-900 border border-cda-dark-800 flex items-center justify-between">
-              <span className="whitespace-nowrap inline-flex items-center px-2.5 py-0.5 rounded-lg bg-cda-yellow-400 text-black font-mono font-black text-sm tracking-wider">
-                {formatPlaca(selectedOrden.vehiculo?.placa)}
-              </span>
-              <span className="text-xs text-white font-bold">
-                {dictamenEstado === 'APROBADO' ? '✓ APROBAR RTM' : '✕ RECHAZAR RTM'}
-              </span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                Observaciones Generales para el Certificado / Informe:
-              </label>
-              <textarea
-                value={dictamenObservaciones}
-                onChange={(e) => setDictamenObservaciones(e.target.value)}
-                placeholder="Observaciones de cierre..."
-                rows={3}
-                className="w-full bg-cda-dark-900 border border-cda-dark-700 text-slate-200 text-xs rounded-xl p-3 focus:border-cda-yellow-500 focus:outline-none resize-none"
-              />
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setModalDictamenOpen(false)}
-                className="w-1/3 py-2.5 rounded-xl bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 font-bold text-xs"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleGuardarDictamen}
-                disabled={isSavingDictamen}
-                className="w-2/3 py-2.5 rounded-xl bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-cda-yellow-500/20"
-              >
-                {isSavingDictamen ? <Loader2 className="w-4 h-4 animate-spin text-black" /> : <CheckCircle2 className="w-4 h-4" />}
-                <span>Confirmar Dictamen</span>
+                <span>Guardar</span>
               </button>
             </div>
           </div>

@@ -47,6 +47,17 @@ export function ClienteModal({ isOpen, onClose, onSuccess, initialData }: Props)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!formData.numeroDocumento.trim() || !formData.nombresRazonSocial.trim() || !formData.celular.trim()) {
+      setError('Por favor diligencie documento, nombre completo y celular del cliente.');
+      return;
+    }
+
+    if (formData.email && formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+      setError('El formato del correo electrónico no es válido (ejemplo: usuario@dominio.com).');
+      return;
+    }
+
     setIsLoading(true);
 
     try {

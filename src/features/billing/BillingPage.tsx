@@ -50,11 +50,20 @@ export function BillingPage() {
       setFacturas(facts);
       setTarifas(tList);
 
-      // Si viene un parametro ingresoId en la URL, abrir directamente el formulario de esa orden
+      // Si viene un parametro ingresoId en la URL, abrir directamente el formulario o la factura de esa orden
       if (initialIngresoId) {
         const target = ordList.find((o) => o.id === initialIngresoId);
-        if (target && target.estado !== 'FACTURADO') {
-          setSelectedOrdenParaFacturar(target);
+        if (target) {
+          const facturaExistente = facts.find(
+            (f) => f.ordenIngreso?.id === target.id || f.id === target.facturaId
+          );
+          if (facturaExistente || target.facturado || target.estado === 'FACTURADO') {
+            if (facturaExistente) {
+              setFacturaEmitidaModal(facturaExistente);
+            }
+          } else {
+            setSelectedOrdenParaFacturar(target);
+          }
         }
       }
     } catch (error) {
