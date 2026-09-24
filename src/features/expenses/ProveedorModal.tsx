@@ -32,38 +32,50 @@ export const ProveedorModal: React.FC<ProveedorModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const wasOpenRef = React.useRef(false);
+  const lastProveedorIdRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    if (proveedorAEditar) {
-      setFormData({
-        tipoDocumento: proveedorAEditar.tipoDocumento || 'NIT',
-        numeroDocumento: proveedorAEditar.numeroDocumento || '',
-        digitoVerificacion: proveedorAEditar.digitoVerificacion || '',
-        tipoPersona: proveedorAEditar.tipoPersona || 'JURIDICA',
-        razonSocialONombre: proveedorAEditar.razonSocialONombre || '',
-        celularPrincipal: proveedorAEditar.celularPrincipal || '',
-        emailPrincipal: proveedorAEditar.emailPrincipal || '',
-        direccion: proveedorAEditar.direccion || '',
-        municipioDane: proveedorAEditar.municipioDane || '',
-        responsabilidadFiscal: proveedorAEditar.responsabilidadFiscal || 'O-23',
-        roles: ['PROVEEDOR'],
-      });
+    if (isOpen) {
+      if (!wasOpenRef.current || (proveedorAEditar?.id && lastProveedorIdRef.current !== proveedorAEditar.id)) {
+        wasOpenRef.current = true;
+        lastProveedorIdRef.current = proveedorAEditar?.id || null;
+        if (proveedorAEditar) {
+          setFormData({
+            tipoDocumento: proveedorAEditar.tipoDocumento || 'NIT',
+            numeroDocumento: proveedorAEditar.numeroDocumento || '',
+            digitoVerificacion: proveedorAEditar.digitoVerificacion || '',
+            tipoPersona: proveedorAEditar.tipoPersona || 'JURIDICA',
+            razonSocialONombre: proveedorAEditar.razonSocialONombre || '',
+            celularPrincipal: proveedorAEditar.celularPrincipal || '',
+            emailPrincipal: proveedorAEditar.emailPrincipal || '',
+            direccion: proveedorAEditar.direccion || '',
+            municipioDane: proveedorAEditar.municipioDane || '',
+            responsabilidadFiscal: proveedorAEditar.responsabilidadFiscal || 'O-23',
+            roles: ['PROVEEDOR'],
+          });
+        } else {
+          setFormData({
+            tipoDocumento: 'NIT',
+            numeroDocumento: '',
+            digitoVerificacion: '',
+            tipoPersona: 'JURIDICA',
+            razonSocialONombre: '',
+            celularPrincipal: '',
+            emailPrincipal: '',
+            direccion: '',
+            municipioDane: '',
+            responsabilidadFiscal: 'O-23',
+            roles: ['PROVEEDOR'],
+          });
+        }
+        setError(null);
+      }
     } else {
-      setFormData({
-        tipoDocumento: 'NIT',
-        numeroDocumento: '',
-        digitoVerificacion: '',
-        tipoPersona: 'JURIDICA',
-        razonSocialONombre: '',
-        celularPrincipal: '',
-        emailPrincipal: '',
-        direccion: '',
-        municipioDane: '',
-        responsabilidadFiscal: 'O-23',
-        roles: ['PROVEEDOR'],
-      });
+      wasOpenRef.current = false;
+      lastProveedorIdRef.current = null;
     }
-    setError(null);
-  }, [proveedorAEditar, isOpen]);
+  }, [proveedorAEditar?.id, isOpen]);
 
   if (!isOpen) return null;
 
@@ -77,7 +89,10 @@ export const ProveedorModal: React.FC<ProveedorModalProps> = ({
     try {
       setLoading(true);
       setError(null);
-      await onSave(formData);
+      await onSave({
+        ...formData,
+        razonSocialONombre: formData.razonSocialONombre.trim().toUpperCase(),
+      });
       onClose();
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Error al guardar proveedor');
@@ -174,9 +189,9 @@ export const ProveedorModal: React.FC<ProveedorModalProps> = ({
               <input
                 type="text"
                 value={formData.razonSocialONombre}
-                onChange={(e) => setFormData({ ...formData, razonSocialONombre: e.target.value })}
-                placeholder="Ej: Metrología y Calibraciones S.A.S."
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                onChange={(e) => setFormData({ ...formData, razonSocialONombre: e.target.value.toUpperCase() })}
+                placeholder="Ej: METROLOGÍA Y CALIBRACIONES S.A.S."
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2 text-sm text-white uppercase focus:outline-none focus:border-amber-500"
                 required
               />
             </div>

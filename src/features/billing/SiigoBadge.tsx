@@ -55,8 +55,16 @@ export function SiigoBadge({
   const handleEmitir = async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    if (loading) return;
+
     try {
       setLoading(true);
+      setData((prev) => ({
+        ...prev,
+        estadoDian: 'PENDIENTE',
+        mensajeRespuesta: 'Transmitiendo comprobante a la DIAN vía SIIGO Cloud...',
+      }));
+
       const res = await siigoService.emitirFacturaDian(facturaId);
       setData({
         estadoDian: res.estadoDian,
@@ -67,6 +75,11 @@ export function SiigoBadge({
       });
       if (onUpdated) onUpdated(res);
     } catch (err: any) {
+      setData((prev) => ({
+        ...prev,
+        estadoDian: 'FALLIDA',
+        mensajeRespuesta: err?.response?.data?.message || err.message,
+      }));
       alert('Error en transmisión a SIIGO: ' + (err?.response?.data?.message || err.message));
     } finally {
       setLoading(false);
@@ -102,7 +115,7 @@ export function SiigoBadge({
             title={`Factura Electrónica SIIGO: ${data.numeroFacturaSiigo || 'FV'}`}
           >
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>SIIGO {data.numeroFacturaSiigo || 'Emitida'}</span>
+            <span>DIAN {data.numeroFacturaSiigo || 'Emitida'}</span>
           </button>
 
           {data.pdfSiigoUrl && (
@@ -110,7 +123,7 @@ export function SiigoBadge({
               type="button"
               onClick={handleOpenPdf}
               className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-xl transition-colors border border-transparent hover:border-emerald-500/20 cursor-pointer"
-              title="Ver PDF Oficial DIAN / SIIGO"
+              title="Ver Factura Oficial DIAN Online"
             >
               <ExternalLink className="w-3.5 h-3.5" />
             </button>
@@ -140,7 +153,7 @@ export function SiigoBadge({
                   </div>
                   <div>
                     <h3 className="text-sm font-black text-white">Factura Electrónica DIAN</h3>
-                    <p className="text-xs text-emerald-400 font-bold">{data.numeroFacturaSiigo || 'SIIGO Cloud'}</p>
+                    <p className="text-xs text-emerald-400 font-bold">{data.numeroFacturaSiigo || 'Validada DIAN'}</p>
                   </div>
                 </div>
                 <span className="text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
@@ -173,7 +186,7 @@ export function SiigoBadge({
                     className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
                   >
                     <FileText className="w-4 h-4" />
-                    <span>Ver Factura en SIIGO</span>
+                    <span>Ver Factura DIAN Online</span>
                   </button>
                 )}
                 <button
@@ -196,20 +209,27 @@ export function SiigoBadge({
     );
   }
 
+  if (loading) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm animate-pulse"
+        title="Transmitiendo comprobante fiscal a la DIAN vía SIIGO..."
+      >
+        <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+        <span>Enviando a SIIGO...</span>
+      </span>
+    );
+  }
+
   if (data.estadoDian === 'FALLIDA' || data.estadoDian === 'RECHAZADA') {
     return (
       <button
         onClick={handleEmitir}
-        disabled={loading}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 transition-all shadow-sm"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 transition-all shadow-sm cursor-pointer"
         title={data.mensajeRespuesta || 'Error en transmisión previa. Clic para reintentar con SIIGO'}
       >
-        {loading ? (
-          <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-400" />
-        ) : (
-          <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-        )}
-        <span>{loading ? 'Reintentando...' : 'Reintentar SIIGO'}</span>
+        <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+        <span>Reintentar SIIGO</span>
       </button>
     );
   }
@@ -218,12 +238,11 @@ export function SiigoBadge({
   return (
     <button
       onClick={handleEmitir}
-      disabled={loading}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-all shadow-sm"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-all shadow-sm cursor-pointer"
       title="Transmitir y emitir Factura Electrónica ante la DIAN vía SIIGO"
     >
-      <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${loading ? 'animate-spin' : ''}`} />
-      <span>{loading ? 'Transmitiendo...' : 'Transmitir DIAN'}</span>
+      <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+      <span>Transmitir DIAN</span>
     </button>
   );
 }

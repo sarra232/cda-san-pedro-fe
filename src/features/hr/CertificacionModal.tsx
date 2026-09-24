@@ -84,8 +84,8 @@ export const CertificacionModal: React.FC<Props> = ({
             >
               <option value="" disabled>Seleccione un colaborador...</option>
               {empleados.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.nombresApellidos} ({emp.cargo} - {emp.numeroDocumento})
+                <option key={emp.id} value={emp.id} className="uppercase">
+                  {emp.nombresApellidos.toUpperCase()} ({emp.cargo} - {emp.numeroDocumento})
                 </option>
               ))}
             </select>

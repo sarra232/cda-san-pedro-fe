@@ -31,7 +31,9 @@ import {
   UserCheck,
   CreditCard,
   Eye,
-  KeyRound,
+  Mail,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 export const HRPage: React.FC = () => {
@@ -42,11 +44,31 @@ export const HRPage: React.FC = () => {
   const [certificaciones, setCertificaciones] = useState<EmpleadoCertificacion[]>([]);
   const [nominas, setNominas] = useState<Nomina[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [enviandoInvitacionId, setEnviandoInvitacionId] = useState<string | null>(null);
   
   // Filtros
   const [searchQuery, setSearchQuery] = useState('');
-  const [filtroEstadoEmp, setFiltroEstadoEmp] = useState<string>('TODOS');
+  const [filtroEstadoEmp, setFiltroEstadoEmp] = useState<string>('ACTIVOS');
   
+  // Paginación
+  const [paginaEmp, setPaginaEmp] = useState(1);
+  const [itemsPorPaginaEmp, setItemsPorPaginaEmp] = useState(10);
+  
+  const [paginaCert, setPaginaCert] = useState(1);
+  const [itemsPorPaginaCert, setItemsPorPaginaCert] = useState(9);
+  
+  const [paginaNom, setPaginaNom] = useState(1);
+  const [itemsPorPaginaNom, setItemsPorPaginaNom] = useState(10);
+
+  useEffect(() => {
+    setPaginaEmp(1);
+  }, [searchQuery, filtroEstadoEmp]);
+
+  useEffect(() => {
+    setPaginaCert(1);
+  }, [searchQuery]);
+
   // Modales
   const [modalEmpleadoOpen, setModalEmpleadoOpen] = useState(false);
   const [empleadoAEditar, setEmpleadoAEditar] = useState<Empleado | null>(null);
@@ -57,9 +79,12 @@ export const HRPage: React.FC = () => {
   const [modalDetalleNominaOpen, setModalDetalleNominaOpen] = useState(false);
   const [nominaSeleccionada, setNominaSeleccionada] = useState<Nomina | null>(null);
 
-  const cargarDatos = async () => {
+  const cargarDatos = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        if (empleados.length === 0) setLoading(true);
+        setIsRefreshing(true);
+      }
       const [dataEmp, dataCert, dataNom] = await Promise.all([
         hrService.listarEmpleados().catch((err) => {
           console.error('Error al listar empleados:', err);
@@ -80,12 +105,34 @@ export const HRPage: React.FC = () => {
     } catch (error) {
       console.error('Error al cargar datos de Talento Humano:', error);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+        setIsRefreshing(false);
+      }
     }
   };
 
   useEffect(() => {
-    cargarDatos();
+    cargarDatos(false);
+
+    // Polling periódico cada 10 segundos
+    const interval = setInterval(() => {
+      cargarDatos(true);
+    }, 10000);
+
+    // Revalidación inmediata al enfocar pestaña
+    const handleRevalidate = () => {
+      cargarDatos(true);
+    };
+
+    window.addEventListener('focus', handleRevalidate);
+    document.addEventListener('visibilitychange', handleRevalidate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleRevalidate);
+      document.removeEventListener('visibilitychange', handleRevalidate);
+    };
   }, []);
 
   // Handlers para Empleados
@@ -107,18 +154,21 @@ export const HRPage: React.FC = () => {
 
   const handleReenviarInvitacion = async (emp: Empleado) => {
     const estadoTexto = emp.estado !== 'ACTIVO' ? ' (se reactivará su acceso en el sistema)' : '';
-    if (window.confirm(`¿Desea enviar una invitación con enlace seguro para crear contraseña a ${emp.nombresApellidos}${estadoTexto}?`)) {
+    if (window.confirm(`¿Desea enviar un correo para resetear o crear la contraseña a ${emp.nombresApellidos}${estadoTexto}?`)) {
       try {
+        setEnviandoInvitacionId(emp.id);
         const msg = await hrService.reenviarInvitacion(emp.id);
         alert(msg);
         await cargarDatos();
       } catch (err: unknown) {
-        let msg = 'Error al enviar invitación';
+        let msg = 'Error al enviar correo de restablecimiento';
         if (err && typeof err === 'object' && 'response' in err) {
           const resData = (err as { response: { data?: { message?: string } } }).response?.data;
           if (resData?.message) msg = resData.message;
         }
         alert(msg);
+      } finally {
+        setEnviandoInvitacionId(null);
       }
     }
   };
@@ -149,16 +199,34 @@ export const HRPage: React.FC = () => {
     await cargarDatos();
   };
 
+  // Contadores de estado de colaboradores
+  const countActivos = empleados.filter((e) => e.estado === 'ACTIVO' && e.usuarioActivo !== false).length;
+  const countRetirados = empleados.filter((e) => e.estado === 'RETIRADO' || e.usuarioActivo === false).length;
+  const countNovedades = empleados.filter((e) => ['VACACIONES', 'INCAPACITADO', 'LICENCIA'].includes(e.estado)).length;
+
   // Filtros de Empleados
   const empleadosFiltrados = empleados.filter((e) => {
-    const matchEstado = filtroEstadoEmp === 'TODOS' || e.estado === filtroEstadoEmp;
+    let matchEstado = true;
+    if (filtroEstadoEmp === 'ACTIVOS' || filtroEstadoEmp === 'ACTIVO') {
+      matchEstado = e.estado === 'ACTIVO' && e.usuarioActivo !== false;
+    } else if (filtroEstadoEmp === 'RETIRADOS' || filtroEstadoEmp === 'RETIRADO' || filtroEstadoEmp === 'INACTIVO') {
+      matchEstado = e.estado === 'RETIRADO' || e.usuarioActivo === false;
+    } else if (filtroEstadoEmp === 'NOVEDADES') {
+      matchEstado = ['VACACIONES', 'INCAPACITADO', 'LICENCIA'].includes(e.estado);
+    } else if (filtroEstadoEmp === 'TODOS') {
+      matchEstado = true;
+    } else {
+      matchEstado = e.estado === filtroEstadoEmp;
+    }
+
     const q = (searchQuery || '').toLowerCase().trim();
     if (!q) return matchEstado;
     const matchSearch =
       (e.nombresApellidos || '').toLowerCase().includes(q) ||
       (e.numeroDocumento || '').toLowerCase().includes(q) ||
       (e.cargo || '').toLowerCase().includes(q) ||
-      (e.email || '').toLowerCase().includes(q);
+      (e.email || '').toLowerCase().includes(q) ||
+      (e.departamento || '').toLowerCase().includes(q);
     return matchEstado && matchSearch;
   });
 
@@ -172,6 +240,25 @@ export const HRPage: React.FC = () => {
       (c.codigoCertificado || '').toLowerCase().includes(q)
     );
   });
+
+  // Paginación calculada
+  const totalPaginasEmp = Math.max(1, Math.ceil(empleadosFiltrados.length / itemsPorPaginaEmp));
+  const empleadosPaginados = empleadosFiltrados.slice(
+    (paginaEmp - 1) * itemsPorPaginaEmp,
+    paginaEmp * itemsPorPaginaEmp
+  );
+
+  const totalPaginasCert = Math.max(1, Math.ceil(certsFiltradas.length / itemsPorPaginaCert));
+  const certsPaginadas = certsFiltradas.slice(
+    (paginaCert - 1) * itemsPorPaginaCert,
+    paginaCert * itemsPorPaginaCert
+  );
+
+  const totalPaginasNom = Math.max(1, Math.ceil(nominas.length / itemsPorPaginaNom));
+  const nominasPaginadas = nominas.slice(
+    (paginaNom - 1) * itemsPorPaginaNom,
+    paginaNom * itemsPorPaginaNom
+  );
 
   // KPIs Resumen
   const empleadosActivos = empleados.filter((e) => e.estado === 'ACTIVO');
@@ -250,11 +337,12 @@ export const HRPage: React.FC = () => {
 
         <div className="flex items-center gap-2.5 flex-wrap">
           <button
-            onClick={cargarDatos}
-            className="p-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-xl transition-all"
-            title="Refrescar Datos"
+            onClick={() => cargarDatos(false)}
+            disabled={isRefreshing}
+            className="p-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+            title="Recargar datos en tiempo real"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 text-amber-400 ${isRefreshing || loading ? 'animate-spin' : ''}`} />
           </button>
 
           {activeTab === 'EMPLEADOS' && (
@@ -263,7 +351,7 @@ export const HRPage: React.FC = () => {
                 setEmpleadoAEditar(null);
                 setModalEmpleadoOpen(true);
               }}
-              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl flex items-center gap-2 text-sm transition-all shadow-lg shadow-amber-500/20"
+              className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm rounded-xl transition-all shadow-lg shadow-amber-500/20"
             >
               <Plus className="w-4 h-4" />
               <span>Nuevo Colaborador</span>
@@ -273,75 +361,69 @@ export const HRPage: React.FC = () => {
           {activeTab === 'CERTIFICACIONES' && (
             <button
               onClick={() => setModalCertOpen(true)}
-              disabled={empleados.length === 0}
-              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold rounded-xl flex items-center gap-2 text-sm transition-all shadow-lg shadow-amber-500/20"
+              className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm rounded-xl transition-all shadow-lg shadow-amber-500/20"
             >
-              <Award className="w-4 h-4" />
-              <span>Registrar Certificación</span>
+              <Plus className="w-4 h-4" />
+              <span>Acreditar Certificación</span>
             </button>
           )}
 
           {activeTab === 'NOMINA' && (
             <button
               onClick={() => setModalLiquidarOpen(true)}
-              disabled={empleadosActivos.length === 0}
-              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold rounded-xl flex items-center gap-2 text-sm transition-all shadow-lg shadow-amber-500/20"
+              className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm rounded-xl transition-all shadow-lg shadow-amber-500/20"
             >
-              <DollarSign className="w-4 h-4" />
+              <FileSpreadsheet className="w-4 h-4" />
               <span>Liquidar Quincena</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Tarjetas Resumen KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="p-4 bg-slate-900/90 border border-slate-800/80 rounded-2xl shadow-lg">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-semibold uppercase">Plantilla Activa</span>
+      {/* Tarjetas KPIs Superiores */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400">Total Colaboradores</span>
             <Users className="w-4 h-4 text-amber-400" />
           </div>
-          <p className="text-2xl font-black text-white mt-1">{empleadosActivos.length}</p>
-          <p className="text-[10px] text-slate-500 mt-1">Inspectores, técnicos y admin</p>
+          <p className="text-2xl font-black text-white mt-2">{empleados.length}</p>
+          <span className="text-[10px] text-emerald-400 font-medium mt-1 inline-block">
+            ● {empleadosActivos.length} activos en servicio
+          </span>
         </div>
 
-        <div className="p-4 bg-slate-900/90 border border-slate-800/80 rounded-2xl shadow-lg">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-semibold uppercase">Acreditaciones Vigentes</span>
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+        <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400">Acreditaciones ONAC</span>
+            <Award className="w-4 h-4 text-emerald-400" />
           </div>
-          <p className="text-2xl font-black text-emerald-400 mt-1">
-            {certificaciones.filter((c) => c.colorSemaforo === 'VERDE').length}
-          </p>
-          <p className="text-[10px] text-slate-500 mt-1">Cumplimiento ISO 17020</p>
+          <p className="text-2xl font-black text-white mt-2">{certificaciones.length}</p>
+          <span className="text-[10px] text-slate-400 font-medium mt-1 inline-block">
+            Vigentes en pista
+          </span>
         </div>
 
-        <div className="p-4 bg-slate-900/90 border border-slate-800/80 rounded-2xl shadow-lg">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-semibold uppercase">Alertas Certificados</span>
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
+        <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400">Certificaciones en Riesgo</span>
+            <AlertTriangle className="w-4 h-4 text-rose-400" />
           </div>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-black text-amber-400">{certsPorVencer}</span>
-            <span className="text-xs text-slate-400">por vencer</span>
-            {certsVencidas > 0 && (
-              <span className="text-xs font-bold text-rose-400">({certsVencidas} vencidas)</span>
-            )}
-          </div>
-          <p className="text-[10px] text-slate-500 mt-1">Renovación ante evaluadores</p>
+          <p className="text-2xl font-black text-rose-400 mt-2">{certsPorVencer + certsVencidas}</p>
+          <span className="text-[10px] text-rose-400 font-medium mt-1 inline-block">
+            {certsVencidas} vencidas • {certsPorVencer} por vencer
+          </span>
         </div>
 
-        <div className="p-4 bg-slate-900/90 border border-slate-800/80 rounded-2xl shadow-lg">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-xs font-semibold uppercase">Última Nómina</span>
-            <FileSpreadsheet className="w-4 h-4 text-amber-400" />
+        <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400">Nóminas Procesadas</span>
+            <DollarSign className="w-4 h-4 text-amber-400" />
           </div>
-          <p className="text-lg font-bold text-white mt-1">
-            {nominas[0]?.periodoDescripcion || 'Sin liquidar'}
-          </p>
-          <p className="text-[10px] text-slate-400 mt-1">
-            {nominas[0] ? `Neto: ${formatearCOP(nominas[0].totalNeto)}` : 'Periodo actual'}
-          </p>
+          <p className="text-2xl font-black text-amber-400 mt-2">{nominas.length}</p>
+          <span className="text-[10px] text-slate-400 font-medium mt-1 inline-block">
+            Periodos liquidados
+          </span>
         </div>
       </div>
 
@@ -392,6 +474,82 @@ export const HRPage: React.FC = () => {
       {/* ========================================================================= */}
       {activeTab === 'EMPLEADOS' && (
         <div className="space-y-4">
+          {/* Selector de Segmentos de Estado (Pestañas rápidas) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setFiltroEstadoEmp('ACTIVOS')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                filtroEstadoEmp === 'ACTIVOS' || filtroEstadoEmp === 'ACTIVO'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/10'
+                  : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span>Activos en Servicio</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-[10px] font-mono font-bold text-emerald-300">
+                {countActivos}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFiltroEstadoEmp('NOVEDADES')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                filtroEstadoEmp === 'NOVEDADES' || ['VACACIONES', 'INCAPACITADO', 'LICENCIA'].includes(filtroEstadoEmp)
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-500/10'
+                  : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+              <span>En Novedad / Licencia</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-[10px] font-mono font-bold text-amber-300">
+                {countNovedades}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFiltroEstadoEmp('RETIRADOS')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                filtroEstadoEmp === 'RETIRADOS' || filtroEstadoEmp === 'RETIRADO' || filtroEstadoEmp === 'INACTIVO'
+                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-500/10'
+                  : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+              <span>Inactivos / Retirados</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-rose-500/20 text-[10px] font-mono font-bold text-rose-300">
+                {countRetirados}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFiltroEstadoEmp('TODOS')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                filtroEstadoEmp === 'TODOS'
+                  ? 'bg-slate-800 text-white border border-slate-700 shadow-sm'
+                  : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <span>Todos</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-[10px] font-mono font-bold text-slate-300">
+                {empleados.length}
+              </span>
+            </button>
+          </div>
+
+          {/* Banner informativo cuando se visualizan inactivos/retirados */}
+          {(filtroEstadoEmp === 'RETIRADOS' || filtroEstadoEmp === 'RETIRADO' || filtroEstadoEmp === 'INACTIVO') && (
+            <div className="bg-rose-950/20 border border-rose-500/30 rounded-2xl p-3.5 flex items-center gap-3 text-xs text-rose-300">
+              <ShieldAlert className="w-4 h-4 shrink-0 text-rose-400" />
+              <span>
+                Mostrando colaboradores inactivos o retirados. Puede reactivar su acceso en cualquier momento editando su estado a ACTIVO o restableciendo su clave.
+              </span>
+            </div>
+          )}
+
           {/* Barra de Búsqueda y Filtros */}
           <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="relative flex-1">
@@ -411,11 +569,13 @@ export const HRPage: React.FC = () => {
                 onChange={(e) => setFiltroEstadoEmp(e.target.value)}
                 className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
               >
+                <option value="ACTIVOS">✓ Activos en Servicio</option>
+                <option value="NOVEDADES">⏸️ En Novedad (Vacaciones / Licencias)</option>
+                <option value="RETIRADOS">✕ Inactivos y Retirados</option>
+                <option value="VACACIONES">Específico: En Vacaciones</option>
+                <option value="INCAPACITADO">Específico: Incapacitados</option>
+                <option value="LICENCIA">Específico: En Licencia</option>
                 <option value="TODOS">Todos los Estados</option>
-                <option value="ACTIVO">Activos</option>
-                <option value="EN_VACACIONES">En Vacaciones</option>
-                <option value="INCAPACITADO">Incapacitados</option>
-                <option value="RETIRADO">Retirados</option>
               </select>
             </div>
           </div>
@@ -432,7 +592,7 @@ export const HRPage: React.FC = () => {
                 No se encontraron colaboradores con los criterios seleccionados.
               </div>
             ) : (
-              empleadosFiltrados.map((emp) => (
+              empleadosPaginados.map((emp) => (
                 <div
                   key={emp.id}
                   className="p-4 bg-slate-900 border border-slate-800/80 rounded-2xl space-y-3 shadow-lg"
@@ -454,24 +614,17 @@ export const HRPage: React.FC = () => {
                           {emp.tipoDocumento} {emp.numeroDocumento}
                         </span>
                       </div>
-                      <h3 className="text-base font-bold text-white mt-1">{emp.nombresApellidos}</h3>
+                      <h3 className="text-base font-bold text-white mt-1 uppercase">{emp.nombresApellidos}</h3>
                       <p className="text-xs text-amber-400 font-medium">{emp.cargo}</p>
                     </div>
 
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => handleReenviarInvitacion(emp)}
-                        className="p-2 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
-                        title="Enviar invitación para crear contraseña"
-                      >
-                        <KeyRound className="w-4 h-4" />
-                      </button>
-                      <button
                         onClick={() => {
                           setEmpleadoAEditar(emp);
                           setModalEmpleadoOpen(true);
                         }}
-                        className="p-2 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg"
+                        className="p-2 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
                         title="Editar Colaborador y Rol"
                       >
                         <Edit3 className="w-4 h-4" />
@@ -479,13 +632,30 @@ export const HRPage: React.FC = () => {
                       {emp.estado === 'ACTIVO' && (
                         <button
                           onClick={() => handleRetirarEmpleado(emp.id)}
-                          className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg"
+                          className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
                           title="Retirar colaborador y dar de baja en la app"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
                     </div>
+                  </div>
+
+                  {/* Botón de reseteo de clave */}
+                  <div className="pt-2">
+                    <button
+                      onClick={() => handleReenviarInvitacion(emp)}
+                      disabled={enviandoInvitacionId === emp.id}
+                      className="w-full py-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 active:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-sm"
+                      title="Enviar enlace por correo para resetear contraseña"
+                    >
+                      {enviandoInvitacionId === emp.id ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                      ) : (
+                        <Mail className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      )}
+                      <span>Reset Clave</span>
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-xs text-slate-300 pt-2 border-t border-slate-800/60">
@@ -523,110 +693,165 @@ export const HRPage: React.FC = () => {
             )}
           </div>
 
-          {/* Vista Escritorio: Tabla Estilizada */}
+          {/* Vista Escritorio: Tabla Estilizada con soporte horizontal y sticky actions */}
           <div className="hidden md:block bg-slate-900/90 border border-slate-800/80 rounded-2xl overflow-hidden shadow-xl">
-            <table className="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/60 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  <th className="py-3.5 px-4">Documento</th>
-                  <th className="py-3.5 px-4">Colaborador / Nombres</th>
-                  <th className="py-3.5 px-4">Cargo & Departamento</th>
-                  <th className="py-3.5 px-4">Rol en App</th>
-                  <th className="py-3.5 px-4">Contrato</th>
-                  <th className="py-3.5 px-4">Salario Base</th>
-                  <th className="py-3.5 px-4">Estado</th>
-                  <th className="py-3.5 px-4 text-center">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {loading ? (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400">
-                      <RefreshCw className="w-6 h-6 animate-spin mx-auto text-amber-400 mb-2" />
-                      Cargando colaboradores...
-                    </td>
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full min-w-[1000px] text-left border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-950/60 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    <th className="py-3.5 px-4 whitespace-nowrap">Documento</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap min-w-[200px]">Colaborador / Nombres</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap min-w-[160px]">Cargo & Departamento</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Rol en App</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Contrato</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Salario Base</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Estado</th>
+                    <th className="py-3.5 px-4 text-center whitespace-nowrap sticky right-0 bg-slate-950/95 backdrop-blur-sm z-10 shadow-[-12px_0_15px_-4px_rgba(0,0,0,0.5)] border-l border-slate-800/80">
+                      Acciones
+                    </th>
                   </tr>
-                ) : empleadosFiltrados.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-10 text-center text-slate-400">
-                      No hay colaboradores registrados con esos filtros.
-                    </td>
-                  </tr>
-                ) : (
-                  empleadosFiltrados.map((emp) => (
-                    <tr key={emp.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-4 font-mono font-medium text-amber-400 text-xs">
-                        {emp.tipoDocumento} {emp.numeroDocumento}
-                      </td>
-                      <td className="py-3 px-4">
-                        <p className="font-bold text-white">{emp.nombresApellidos}</p>
-                        <p className="text-xs text-slate-400">{emp.celular} • {emp.email || 'Sin correo'}</p>
-                      </td>
-                      <td className="py-3 px-4">
-                        <p className="text-white font-medium text-xs">{emp.cargo}</p>
-                        <p className="text-[11px] text-slate-500">{emp.departamento}</p>
-                      </td>
-                      <td className="py-3 px-4">
-                        {getRolBadge(emp.rolApp)}
-                      </td>
-                      <td className="py-3 px-4 text-xs text-slate-300">
-                        {emp.tipoContrato}
-                      </td>
-                      <td className="py-3 px-4 font-mono font-bold text-emerald-400">
-                        {formatearCOP(emp.salarioBase)}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex flex-col gap-1">
-                          <span
-                            className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border inline-block text-center ${
-                              emp.estado === 'ACTIVO'
-                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                : 'bg-slate-800 text-slate-400 border-slate-700'
-                            }`}
-                          >
-                            {emp.estado}
-                          </span>
-                          <span className={`text-[9px] font-medium ${emp.usuarioActivo !== false ? 'text-emerald-400/80' : 'text-rose-400/80'}`}>
-                            {emp.usuarioActivo !== false ? '● Acceso App OK' : '✕ Acceso Bloqueado'}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => handleReenviarInvitacion(emp)}
-                            className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
-                            title="Enviar invitación para crear contraseña"
-                          >
-                            <KeyRound className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEmpleadoAEditar(emp);
-                              setModalEmpleadoOpen(true);
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
-                            title="Editar Colaborador y Rol"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          {emp.estado === 'ACTIVO' && (
-                            <button
-                              onClick={() => handleRetirarEmpleado(emp.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
-                              title="Retirar colaborador y dar de baja en la app"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-400">
+                        <RefreshCw className="w-6 h-6 animate-spin mx-auto text-amber-400 mb-2" />
+                        Cargando colaboradores...
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : empleadosFiltrados.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-10 text-center text-slate-400">
+                        No hay colaboradores registrados con esos filtros.
+                      </td>
+                    </tr>
+                  ) : (
+                    empleadosPaginados.map((emp) => (
+                      <tr key={emp.id} className="hover:bg-slate-800/40 transition-colors group">
+                        <td className="py-3 px-4 font-mono font-medium text-amber-400 text-xs whitespace-nowrap">
+                          {emp.tipoDocumento} {emp.numeroDocumento}
+                        </td>
+                        <td className="py-3 px-4 min-w-[200px]">
+                          <p className="font-bold text-white whitespace-nowrap uppercase">{emp.nombresApellidos}</p>
+                          <p className="text-xs text-slate-400 whitespace-nowrap">{emp.celular} • {emp.email || 'Sin correo'}</p>
+                        </td>
+                        <td className="py-3 px-4 min-w-[160px]">
+                          <p className="text-white font-medium text-xs whitespace-nowrap">{emp.cargo}</p>
+                          <p className="text-[11px] text-slate-500 whitespace-nowrap">{emp.departamento}</p>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          {getRolBadge(emp.rolApp)}
+                        </td>
+                        <td className="py-3 px-4 text-xs text-slate-300 whitespace-nowrap">
+                          {emp.tipoContrato}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-bold text-emerald-400 whitespace-nowrap">
+                          {formatearCOP(emp.salarioBase)}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border inline-block text-center ${
+                                emp.estado === 'ACTIVO'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700'
+                              }`}
+                            >
+                              {emp.estado}
+                            </span>
+                            <span className={`text-[9px] font-medium ${emp.usuarioActivo !== false ? 'text-emerald-400/80' : 'text-rose-400/80'}`}>
+                              {emp.usuarioActivo !== false ? '● Acceso App OK' : '✕ Acceso Bloqueado'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap sticky right-0 bg-slate-900/95 group-hover:bg-slate-900 backdrop-blur-sm z-10 shadow-[-12px_0_15px_-4px_rgba(0,0,0,0.5)] border-l border-slate-800/80">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleReenviarInvitacion(emp)}
+                              disabled={enviandoInvitacionId === emp.id}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 active:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/30 text-xs font-bold transition-all disabled:opacity-50 shadow-sm whitespace-nowrap"
+                              title="Enviar enlace por correo para resetear contraseña"
+                            >
+                              {enviandoInvitacionId === emp.id ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                              ) : (
+                                <Mail className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                              )}
+                              <span>Reset Clave</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEmpleadoAEditar(emp);
+                                setModalEmpleadoOpen(true);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
+                              title="Editar Colaborador y Rol"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            {emp.estado === 'ACTIVO' && (
+                              <button
+                                onClick={() => handleRetirarEmpleado(emp.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+                                title="Retirar colaborador y dar de baja en la app"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          {/* Barra de Paginación de Colaboradores */}
+          {empleadosFiltrados.length > 0 && (
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+              <div className="flex items-center gap-2">
+                <span>Mostrar</span>
+                <select
+                  value={itemsPorPaginaEmp}
+                  onChange={(e) => {
+                    setItemsPorPaginaEmp(Number(e.target.value));
+                    setPaginaEmp(1);
+                  }}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-medium focus:outline-none focus:border-amber-500"
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+                <span>por página • Mostrando {Math.min((paginaEmp - 1) * itemsPorPaginaEmp + 1, empleadosFiltrados.length)} a {Math.min(paginaEmp * itemsPorPaginaEmp, empleadosFiltrados.length)} de {empleadosFiltrados.length} colaboradores</span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setPaginaEmp((p) => Math.max(1, p - 1))}
+                  disabled={paginaEmp === 1}
+                  className="p-1.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title="Página anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-lg font-bold">
+                  Página {paginaEmp} de {totalPaginasEmp}
+                </span>
+                <button
+                  onClick={() => setPaginaEmp((p) => Math.min(totalPaginasEmp, p + 1))}
+                  disabled={paginaEmp === totalPaginasEmp}
+                  className="p-1.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title="Página siguiente"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -660,7 +885,7 @@ export const HRPage: React.FC = () => {
                 No hay certificaciones técnicas registradas.
               </div>
             ) : (
-              certsFiltradas.map((c) => {
+              certsPaginadas.map((c) => {
                 const isRojo = c.colorSemaforo === 'ROJO';
                 const isAmarillo = c.colorSemaforo === 'AMARILLO';
 
@@ -704,7 +929,7 @@ export const HRPage: React.FC = () => {
                     <div className="text-xs text-slate-300 space-y-1 pt-2 border-t border-slate-800/80">
                       <div className="flex items-center justify-between">
                         <span className="text-slate-500">Colaborador:</span>
-                        <strong className="text-white">{c.empleadoNombre}</strong>
+                        <strong className="text-white uppercase">{c.empleadoNombre}</strong>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-slate-500">Entidad:</span>
@@ -728,6 +953,51 @@ export const HRPage: React.FC = () => {
               })
             )}
           </div>
+
+          {/* Barra de Paginación de Certificaciones */}
+          {certsFiltradas.length > 0 && (
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+              <div className="flex items-center gap-2">
+                <span>Mostrar</span>
+                <select
+                  value={itemsPorPaginaCert}
+                  onChange={(e) => {
+                    setItemsPorPaginaCert(Number(e.target.value));
+                    setPaginaCert(1);
+                  }}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-medium focus:outline-none focus:border-amber-500"
+                >
+                  <option value={6}>6</option>
+                  <option value={9}>9</option>
+                  <option value={18}>18</option>
+                  <option value={36}>36</option>
+                </select>
+                <span>por página • Mostrando {Math.min((paginaCert - 1) * itemsPorPaginaCert + 1, certsFiltradas.length)} a {Math.min(paginaCert * itemsPorPaginaCert, certsFiltradas.length)} de {certsFiltradas.length} certificaciones</span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setPaginaCert((p) => Math.max(1, p - 1))}
+                  disabled={paginaCert === 1}
+                  className="p-1.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title="Página anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-lg font-bold">
+                  Página {paginaCert} de {totalPaginasCert}
+                </span>
+                <button
+                  onClick={() => setPaginaCert((p) => Math.min(totalPaginasCert, p + 1))}
+                  disabled={paginaCert === totalPaginasCert}
+                  className="p-1.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title="Página siguiente"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -747,7 +1017,7 @@ export const HRPage: React.FC = () => {
                 No hay nóminas liquidadas en el historial. Utilice el botón "Liquidar Quincena".
               </div>
             ) : (
-              nominas.map((nom) => (
+              nominasPaginadas.map((nom) => (
                 <div
                   key={nom.id}
                   className="p-4 bg-slate-900 border border-slate-800/80 rounded-2xl space-y-3 shadow-lg"
@@ -799,84 +1069,133 @@ export const HRPage: React.FC = () => {
             )}
           </div>
 
+          {/* Vista Escritorio: Tabla de Nóminas con soporte horizontal y sticky actions */}
           <div className="hidden md:block bg-slate-900/90 border border-slate-800/80 rounded-2xl overflow-hidden shadow-xl">
-            <table className="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/60 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  <th className="py-3.5 px-4">Periodo Nómina</th>
-                  <th className="py-3.5 px-4">Rango Fechas</th>
-                  <th className="py-3.5 px-4">Total Devengado</th>
-                  <th className="py-3.5 px-4">Total Deducciones</th>
-                  <th className="py-3.5 px-4">Neto a Pagar</th>
-                  <th className="py-3.5 px-4">Costos Patronales</th>
-                  <th className="py-3.5 px-4">Estado</th>
-                  <th className="py-3.5 px-4 text-center">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {loading ? (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400">
-                      <RefreshCw className="w-6 h-6 animate-spin mx-auto text-amber-400 mb-2" />
-                      Cargando historial de nómina...
-                    </td>
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full min-w-[950px] text-left border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-950/60 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    <th className="py-3.5 px-4 whitespace-nowrap">Periodo Nómina</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Rango Fechas</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Total Devengado</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Total Deducciones</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Neto a Pagar</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Costos Patronales</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Estado</th>
+                    <th className="py-3.5 px-4 text-center whitespace-nowrap sticky right-0 bg-slate-950/95 backdrop-blur-sm z-10 shadow-[-12px_0_15px_-4px_rgba(0,0,0,0.5)] border-l border-slate-800/80">
+                      Acciones
+                    </th>
                   </tr>
-                ) : nominas.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-10 text-center text-slate-400">
-                      No hay nóminas registradas. Utilice el botón "Liquidar Quincena".
-                    </td>
-                  </tr>
-                ) : (
-                  nominas.map((nom) => (
-                    <tr key={nom.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-4 font-bold text-white">
-                        {nom.periodoDescripcion}
-                      </td>
-                      <td className="py-3 px-4 text-xs text-slate-400 font-mono">
-                        {nom.fechaInicio} al {nom.fechaFin}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-emerald-400">
-                        {formatearCOP(nom.totalDevengado)}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-rose-400">
-                        -{formatearCOP(nom.totalDeducciones)}
-                      </td>
-                      <td className="py-3 px-4 font-mono font-extrabold text-amber-400">
-                        {formatearCOP(nom.totalNeto)}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-slate-400 text-xs">
-                        {formatearCOP(Number(nom.totalAportesPatronales || 0) + Number(nom.totalProvisiones || 0))}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
-                            nom.estado === 'APROBADA' || nom.estado === 'PAGADA'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                              : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                          }`}
-                        >
-                          {nom.estado}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => {
-                            setNominaSeleccionada(nom);
-                            setModalDetalleNominaOpen(true);
-                          }}
-                          className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-semibold text-xs rounded-lg transition-colors flex items-center gap-1.5 mx-auto"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>Ver Desglose</span>
-                        </button>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-400">
+                        <RefreshCw className="w-6 h-6 animate-spin mx-auto text-amber-400 mb-2" />
+                        Cargando historial de nómina...
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : nominas.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-10 text-center text-slate-400">
+                        No hay nóminas registradas. Utilice el botón "Liquidar Quincena".
+                      </td>
+                    </tr>
+                  ) : (
+                    nominasPaginadas.map((nom) => (
+                      <tr key={nom.id} className="hover:bg-slate-800/40 transition-colors group">
+                        <td className="py-3 px-4 font-bold text-white whitespace-nowrap">
+                          {nom.periodoDescripcion}
+                        </td>
+                        <td className="py-3 px-4 text-xs text-slate-400 font-mono whitespace-nowrap">
+                          {nom.fechaInicio} al {nom.fechaFin}
+                        </td>
+                        <td className="py-3 px-4 font-mono text-emerald-400 whitespace-nowrap">
+                          {formatearCOP(nom.totalDevengado)}
+                        </td>
+                        <td className="py-3 px-4 font-mono text-rose-400 whitespace-nowrap">
+                          -{formatearCOP(nom.totalDeducciones)}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-extrabold text-amber-400 whitespace-nowrap">
+                          {formatearCOP(nom.totalNeto)}
+                        </td>
+                        <td className="py-3 px-4 font-mono text-slate-400 text-xs whitespace-nowrap">
+                          {formatearCOP(Number(nom.totalAportesPatronales || 0) + Number(nom.totalProvisiones || 0))}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <span
+                            className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border inline-block ${
+                              nom.estado === 'APROBADA' || nom.estado === 'PAGADA'
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                            }`}
+                          >
+                            {nom.estado}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap sticky right-0 bg-slate-900/95 group-hover:bg-slate-900 backdrop-blur-sm z-10 shadow-[-12px_0_15px_-4px_rgba(0,0,0,0.5)] border-l border-slate-800/80">
+                          <button
+                            onClick={() => {
+                              setNominaSeleccionada(nom);
+                              setModalDetalleNominaOpen(true);
+                            }}
+                            className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-semibold text-xs rounded-lg transition-colors flex items-center gap-1.5 mx-auto"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Ver Desglose</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          {/* Barra de Paginación de Nóminas */}
+          {nominas.length > 0 && (
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+              <div className="flex items-center gap-2">
+                <span>Mostrar</span>
+                <select
+                  value={itemsPorPaginaNom}
+                  onChange={(e) => {
+                    setItemsPorPaginaNom(Number(e.target.value));
+                    setPaginaNom(1);
+                  }}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-white font-medium focus:outline-none focus:border-amber-500"
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                </select>
+                <span>por página • Mostrando {Math.min((paginaNom - 1) * itemsPorPaginaNom + 1, nominas.length)} a {Math.min(paginaNom * itemsPorPaginaNom, nominas.length)} de {nominas.length} periodos</span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setPaginaNom((p) => Math.max(1, p - 1))}
+                  disabled={paginaNom === 1}
+                  className="p-1.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title="Página anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-lg font-bold">
+                  Página {paginaNom} de {totalPaginasNom}
+                </span>
+                <button
+                  onClick={() => setPaginaNom((p) => Math.min(totalPaginasNom, p + 1))}
+                  disabled={paginaNom === totalPaginasNom}
+                  className="p-1.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title="Página siguiente"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

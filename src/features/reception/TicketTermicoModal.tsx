@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Printer, Receipt, Sparkles, CheckCircle2 } from 'lucide-react';
 import { OrdenIngreso } from '../../types/ingreso';
-import { formatPlaca, formatDocumento, formatPhone } from '../../utils/formatters';
+import { formatPlaca, formatDocumento, formatPhone, formatTipoServicio } from '../../utils/formatters';
 import { Link } from 'react-router-dom';
 
 interface Props {
@@ -88,9 +88,9 @@ export function TicketTermicoModal({ orden, onClose }: Props) {
 
             {/* Big Turn Number */}
             <div className="text-center py-2.5 my-2 border-y-2 border-black bg-slate-100">
-              <span className="text-[10px] font-bold uppercase tracking-wider block">TURNO DE INSPECCIÓN</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider block">TURNO DEL DÍA</span>
               <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight block">
-                #{orden.consecutivo}
+                #{orden.turnoDiario || orden.consecutivo}
               </span>
               <span className="text-[11px] font-bold block mt-0.5">
                 ESTADO: {orden.estado}
@@ -121,7 +121,7 @@ export function TicketTermicoModal({ orden, onClose }: Props) {
 
               <div className="flex justify-between">
                 <span className="font-bold">Servicio:</span>
-                <span className="font-bold">{orden.tipoServicio}</span>
+                <span className="font-bold text-right">{formatTipoServicio(orden.tipoServicio, orden.esReinspeccion)}</span>
               </div>
             </div>
 

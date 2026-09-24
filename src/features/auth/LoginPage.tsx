@@ -135,9 +135,9 @@ export function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setIsForgotModalOpen(true)}
-                  className="text-[11px] text-cda-yellow-400 hover:text-cda-yellow-300 font-semibold transition-colors hover:underline flex items-center gap-1"
+                  className="text-[11px] sm:text-xs text-cda-yellow-400 hover:text-cda-yellow-300 font-bold transition-all hover:bg-cda-yellow-400/10 px-2 py-0.5 rounded-lg border border-cda-yellow-400/20 flex items-center gap-1.5 active:scale-95"
                 >
-                  <KeyRound className="w-3 h-3" />
+                  <KeyRound className="w-3.5 h-3.5 text-cda-yellow-400" />
                   <span>¿Olvidaste tu contraseña?</span>
                 </button>
               </div>

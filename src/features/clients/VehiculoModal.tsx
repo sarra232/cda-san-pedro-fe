@@ -34,23 +34,34 @@ export function VehiculoModal({ isOpen, onClose, onSuccess, initialPlaca, initia
   const [error, setError] = useState<string | null>(null);
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
 
+  const wasOpenRef = React.useRef(false);
+  const lastPlacaRef = React.useRef<string | null>(null);
+
   useEffect(() => {
+    const currentPlaca = initialData?.placa || initialPlaca || '';
     if (isOpen) {
-      setFormData({
-        placa: initialData?.placa ? handlePlacaInput(initialData.placa) : initialPlaca ? handlePlacaInput(initialPlaca) : '',
-        categoria: initialData?.categoria || 'LIVIANO',
-        marca: initialData?.marca || '',
-        linea: initialData?.linea || '',
-        modelo: initialData?.modelo || new Date().getFullYear(),
-        chasisVin: initialData?.chasisVin || '',
-        fechaVencimientoSoat: initialData?.fechaVencimientoSoat || '',
-        fechaVencimientoRtm: initialData?.fechaVencimientoRtm || '',
-        propietarioId: initialData?.propietarioId || '',
-      });
-      setError(null);
-      clienteService.getClientes().then(setClientes).catch(() => {});
+      if (!wasOpenRef.current || (currentPlaca && lastPlacaRef.current !== currentPlaca)) {
+        wasOpenRef.current = true;
+        lastPlacaRef.current = currentPlaca || null;
+        setFormData({
+          placa: initialData?.placa ? handlePlacaInput(initialData.placa) : initialPlaca ? handlePlacaInput(initialPlaca) : '',
+          categoria: initialData?.categoria || 'LIVIANO',
+          marca: initialData?.marca || '',
+          linea: initialData?.linea || '',
+          modelo: initialData?.modelo || new Date().getFullYear(),
+          chasisVin: initialData?.chasisVin || '',
+          fechaVencimientoSoat: initialData?.fechaVencimientoSoat || '',
+          fechaVencimientoRtm: initialData?.fechaVencimientoRtm || '',
+          propietarioId: initialData?.propietarioId || '',
+        });
+        setError(null);
+        clienteService.getClientes().then(setClientes).catch(() => {});
+      }
+    } else {
+      wasOpenRef.current = false;
+      lastPlacaRef.current = null;
     }
-  }, [isOpen, initialPlaca, initialData]);
+  }, [isOpen, initialPlaca, initialData?.placa]);
 
   if (!isOpen) return null;
 

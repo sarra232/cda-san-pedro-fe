@@ -7,7 +7,7 @@ export type TipoContrato =
   | 'PRESTACION_SERVICIOS' 
   | 'APRENDIZAJE_SENA';
 
-export type EstadoEmpleado = 'ACTIVO' | 'INACTIVO' | 'EN_VACACIONES' | 'INCAPACITADO' | 'RETIRADO';
+export type EstadoEmpleado = 'ACTIVO' | 'VACACIONES' | 'INCAPACITADO' | 'LICENCIA' | 'RETIRADO';
 
 export type TipoCertificacion = 
   | 'INSPECTOR_LINEA_LIVIANOS'

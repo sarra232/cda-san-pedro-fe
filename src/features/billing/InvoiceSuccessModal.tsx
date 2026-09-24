@@ -65,6 +65,12 @@ export const InvoiceSuccessModal: React.FC<InvoiceSuccessModalProps> = ({
   const handleTransmitirDian = async () => {
     try {
       setTransmittingDian(true);
+      setDianData((prev) => ({
+        ...prev,
+        estadoDian: 'PENDIENTE',
+        mensajeRespuesta: 'Transmitiendo comprobante fiscal a la DIAN vía SIIGO Cloud...',
+      }));
+
       const res = await siigoService.emitirFacturaDian(factura.id);
       setDianData({
         estadoDian: res.estadoDian,
@@ -85,6 +91,11 @@ export const InvoiceSuccessModal: React.FC<InvoiceSuccessModalProps> = ({
         });
       }
     } catch (err: any) {
+      setDianData((prev) => ({
+        ...prev,
+        estadoDian: 'FALLIDA',
+        mensajeRespuesta: err?.response?.data?.message || err.message,
+      }));
       alert('Error al transmitir factura a SIIGO: ' + (err?.response?.data?.message || err.message));
     } finally {
       setTransmittingDian(false);
@@ -243,11 +254,11 @@ export const InvoiceSuccessModal: React.FC<InvoiceSuccessModalProps> = ({
               )}
             </div>
 
-            {/* Enlace al Visor Web Oficial de SIIGO */}
+            {/* Enlace al Visor Web Oficial DIAN / Factura */}
             {esEmitida && dianData.pdfSiigoUrl && (
               <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between gap-2">
                 <span className="text-[11px] text-emerald-200 truncate">
-                  Visualización pública de factura en SIIGO Cloud disponible
+                  Visualización pública de factura en línea disponible
                 </span>
                 <button
                   type="button"
@@ -259,9 +270,10 @@ export const InvoiceSuccessModal: React.FC<InvoiceSuccessModalProps> = ({
                     }
                   }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-black text-xs hover:bg-emerald-400 transition-all shrink-0 cursor-pointer shadow-sm"
+                  title="Ver Factura Oficial DIAN Online"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Ver en SIIGO</span>
+                  <span>Ver Factura DIAN Online</span>
                 </button>
               </div>
             )}

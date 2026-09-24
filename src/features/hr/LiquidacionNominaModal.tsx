@@ -181,7 +181,7 @@ export const LiquidacionNominaModal: React.FC<Props> = ({
                       className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3"
                     >
                       <div className="min-w-[200px]">
-                        <p className="text-sm font-bold text-white">{emp.nombresApellidos}</p>
+                        <p className="text-sm font-bold text-white uppercase">{emp.nombresApellidos}</p>
                         <p className="text-xs text-slate-400">
                           {emp.cargo} • Base: ${Number(emp.salarioBase).toLocaleString('es-CO')}
                         </p>

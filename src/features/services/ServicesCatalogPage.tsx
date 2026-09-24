@@ -21,6 +21,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { Tarifa, TarifaCreateRequest, TarifaUpdateRequest } from '../../types/tarifa';
 import { CategoriaVehiculo } from '../../types/vehiculo';
 import { Pagination } from '../../components/common/Pagination';
+import { ServicioBadge } from '../../components/common/ServicioBadge';
 
 export function ServicesCatalogPage() {
   const { user } = useAuthStore();
@@ -400,9 +401,9 @@ export function ServicesCatalogPage() {
                               {getCategoryIcon(s.categoria)}
                               <span className="font-bold text-white text-xs">{s.categoria}</span>
                             </div>
-                            <span className="text-[10px] text-slate-400 block mt-0.5">
-                              {s.tipoServicio || 'RTM_LEGAL'}
-                            </span>
+                            <div className="mt-1">
+                              <ServicioBadge tipoServicio={s.tipoServicio} size="xs" />
+                            </div>
                           </td>
 
                           <td className="p-3.5 max-w-xs">
@@ -480,9 +481,12 @@ export function ServicesCatalogPage() {
                         </div>
                         <div>
                           <h4 className="font-bold text-white text-xs">{s.nombreServicio}</h4>
-                          <span className="text-[10px] font-mono text-cda-yellow-400">
-                            {s.codigo || 'S/C'} • {s.categoria}
-                          </span>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-[10px] font-mono text-cda-yellow-400">
+                              {s.codigo || 'S/C'} • {s.categoria}
+                            </span>
+                            <ServicioBadge tipoServicio={s.tipoServicio} size="xs" />
+                          </div>
                         </div>
                       </div>
 

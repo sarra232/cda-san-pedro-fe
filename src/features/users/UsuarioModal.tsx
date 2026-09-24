@@ -21,26 +21,36 @@ export function UsuarioModal({ isOpen, onClose, onSuccess, userToEdit }: Props) 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const wasOpenRef = React.useRef(false);
+  const lastUserIdRef = React.useRef<string | null>(null);
+
   useEffect(() => {
     if (isOpen) {
-      setError(null);
-      if (userToEdit) {
-        setTipoDocumento(userToEdit.tipoDocumento || 'CC');
-        setNumeroDocumento(userToEdit.numeroDocumento || '');
-        setNombresApellidos(userToEdit.nombresApellidos || '');
-        setPassword('');
-        setRol(userToEdit.rol || 'TECNICO_PISTA');
-        setActivo(userToEdit.activo ?? true);
-      } else {
-        setTipoDocumento('CC');
-        setNumeroDocumento('');
-        setNombresApellidos('');
-        setPassword('');
-        setRol('TECNICO_PISTA');
-        setActivo(true);
+      if (!wasOpenRef.current || (userToEdit?.id && lastUserIdRef.current !== userToEdit.id)) {
+        wasOpenRef.current = true;
+        lastUserIdRef.current = userToEdit?.id || null;
+        setError(null);
+        if (userToEdit) {
+          setTipoDocumento(userToEdit.tipoDocumento || 'CC');
+          setNumeroDocumento(userToEdit.numeroDocumento || '');
+          setNombresApellidos(userToEdit.nombresApellidos || '');
+          setPassword('');
+          setRol(userToEdit.rol || 'TECNICO_PISTA');
+          setActivo(userToEdit.activo ?? true);
+        } else {
+          setTipoDocumento('CC');
+          setNumeroDocumento('');
+          setNombresApellidos('');
+          setPassword('');
+          setRol('TECNICO_PISTA');
+          setActivo(true);
+        }
       }
+    } else {
+      wasOpenRef.current = false;
+      lastUserIdRef.current = null;
     }
-  }, [isOpen, userToEdit]);
+  }, [isOpen, userToEdit?.id]);
 
   if (!isOpen) return null;
 
@@ -68,7 +78,7 @@ export function UsuarioModal({ isOpen, onClose, onSuccess, userToEdit }: Props) 
         const updateData: UpdateUserData = {
           tipoDocumento,
           numeroDocumento: numeroDocumento.trim(),
-          nombresApellidos: nombresApellidos.trim(),
+          nombresApellidos: nombresApellidos.trim().toUpperCase(),
           rol,
           activo,
         };
@@ -80,7 +90,7 @@ export function UsuarioModal({ isOpen, onClose, onSuccess, userToEdit }: Props) 
         const createData: CreateUserData = {
           tipoDocumento,
           numeroDocumento: numeroDocumento.trim(),
-          nombresApellidos: nombresApellidos.trim(),
+          nombresApellidos: nombresApellidos.trim().toUpperCase(),
           password: password.trim(),
           rol,
         };
@@ -176,9 +186,9 @@ export function UsuarioModal({ isOpen, onClose, onSuccess, userToEdit }: Props) 
               <input
                 type="text"
                 value={nombresApellidos}
-                onChange={(e) => setNombresApellidos(e.target.value)}
-                placeholder="Ej: Juan David Pérez"
-                className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-xl pl-9 pr-3 py-2.5 text-white placeholder:text-slate-500 focus:border-cda-yellow-500 focus:outline-none"
+                onChange={(e) => setNombresApellidos(e.target.value.toUpperCase())}
+                placeholder="Ej: JUAN DAVID PÉREZ"
+                className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-xl pl-9 pr-3 py-2.5 text-white uppercase placeholder:text-slate-500 focus:border-cda-yellow-500 focus:outline-none"
               />
             </div>
           </div>

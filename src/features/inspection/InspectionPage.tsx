@@ -22,13 +22,15 @@ import {
   Check,
   RotateCcw,
   Camera,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { ingresoService } from '../../services/ingresoService';
 import { OrdenIngreso, PruebaInspeccion, TipoPrueba, EstadoPrueba, EstadoOrden } from '../../types/ingreso';
-import { formatPlaca, formatPhone, formatDocumento } from '../../utils/formatters';
+import { formatPlaca, formatPhone, formatDocumento, formatTipoServicio, formatFechaHora, formatHora } from '../../utils/formatters';
 import { Pagination } from '../../components/common/Pagination';
+import { ServicioBadge } from '../../components/common/ServicioBadge';
 import { TicketTermicoModal } from '../reception/TicketTermicoModal';
 
 export function InspectionPage() {
@@ -41,10 +43,12 @@ export function InspectionPage() {
   const [selectedOrden, setSelectedOrden] = useState<OrdenIngreso | null>(null);
   const [pruebas, setPruebas] = useState<PruebaInspeccion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // Filters & Pagination State
   const [searchFilter, setSearchFilter] = useState('');
   const [filterEstado, setFilterEstado] = useState<string>('ABIERTOS');
+  const [filterServicio, setFilterServicio] = useState<string>('TODOS');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -69,13 +73,22 @@ export function InspectionPage() {
   // Ticket Modal
   const [selectedTicketOrden, setSelectedTicketOrden] = useState<OrdenIngreso | null>(null);
 
-  const loadData = async () => {
+  const loadData = async (silent = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
+      else setIsRefreshing(true);
+
       const list = await ingresoService.getIngresosHoy();
       setIngresos(list);
 
-      if (initialOrdenId) {
+      // Si el modal de una orden está abierto, actualizar sus datos en vivo
+      setSelectedOrden((prev) => {
+        if (!prev) return null;
+        const updated = list.find((i) => i.id === prev.id);
+        return updated || prev;
+      });
+
+      if (initialOrdenId && !selectedOrden) {
         const found = list.find((i) => i.id === initialOrdenId);
         if (found) {
           setSelectedOrden(found);
@@ -86,7 +99,8 @@ export function InspectionPage() {
     } catch {
       // Ignorar
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -100,7 +114,26 @@ export function InspectionPage() {
   };
 
   useEffect(() => {
-    loadData();
+    loadData(false);
+
+    // 1. Polling reactivo cada 5 segundos para sincronización multi-usuario en tiempo real
+    const interval = setInterval(() => {
+      loadData(true);
+    }, 5000);
+
+    // 2. Revalidación inmediata al enfocar la pestaña del navegador o cambiar de menú
+    const handleRevalidate = () => {
+      loadData(true);
+    };
+
+    window.addEventListener('focus', handleRevalidate);
+    document.addEventListener('visibilitychange', handleRevalidate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleRevalidate);
+      document.removeEventListener('visibilitychange', handleRevalidate);
+    };
   }, [initialOrdenId]);
 
   const urlFiltro = searchParams.get('filtro') || searchParams.get('estado');
@@ -277,62 +310,81 @@ export function InspectionPage() {
     switch (estado) {
       case 'INGRESADO':
         return (
-          <span className="bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            <span>EN ESPERA DE PISTA</span>
+          <span className="bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+            <Clock className="w-3 h-3 shrink-0" />
+            <span className="whitespace-nowrap">EN ESPERA DE PISTA</span>
           </span>
         );
       case 'EN_INSPECCION':
         return (
-          <span className="bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
-            <Wrench className="w-3 h-3 text-blue-400 animate-spin" />
-            <span>EN PISTA DE PRUEBAS</span>
+          <span className="bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+            <Wrench className="w-3 h-3 text-blue-400 animate-spin shrink-0" />
+            <span className="whitespace-nowrap">EN PISTA DE PRUEBAS</span>
           </span>
         );
       case 'APROBADO':
         return (
-          <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3" />
-            <span>RTM APROBADA</span>
+          <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+            <ShieldCheck className="w-3 h-3 shrink-0" />
+            <span className="whitespace-nowrap">RTM APROBADA</span>
           </span>
         );
       case 'RECHAZADO':
         return (
-          <span className="bg-rose-500/15 text-rose-400 border border-rose-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
-            <ShieldAlert className="w-3 h-3" />
-            <span>RTM RECHAZADA</span>
+          <span className="bg-rose-500/15 text-rose-400 border border-rose-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+            <ShieldAlert className="w-3 h-3 shrink-0" />
+            <span className="whitespace-nowrap">RTM RECHAZADA</span>
           </span>
         );
       case 'FACTURADO':
         return (
-          <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
-            <Receipt className="w-3 h-3" />
-            <span>FACTURADO</span>
+          <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+            <Receipt className="w-3 h-3 shrink-0" />
+            <span className="whitespace-nowrap">FACTURADO</span>
           </span>
         );
       default:
         return (
-          <span className="bg-slate-700 text-slate-300 px-2.5 py-0.5 rounded-full text-[10px]">
+          <span className="bg-slate-700 text-slate-300 px-2.5 py-0.5 rounded-full text-[10px] whitespace-nowrap shrink-0">
             {estado}
           </span>
         );
     }
   };
 
-  const filteredIngresos = ingresos.filter((i) => {
-    const matchesSearch = 
-      (i.vehiculo?.placa && i.vehiculo.placa.toLowerCase().includes(searchFilter.toLowerCase())) ||
-      (i.vehiculo?.propietario?.nombresRazonSocial && i.vehiculo.propietario.nombresRazonSocial.toLowerCase().includes(searchFilter.toLowerCase())) ||
-      (i.consecutivo && i.consecutivo.toString().includes(searchFilter));
+  const filteredIngresos = ingresos
+    .filter((i) => {
+      const q = searchFilter.toLowerCase().trim();
+      const matchesSearch = 
+        !q ||
+        (i.vehiculo?.placa && i.vehiculo.placa.toLowerCase().includes(q)) ||
+        (i.vehiculo?.propietario?.nombresRazonSocial && i.vehiculo.propietario.nombresRazonSocial.toLowerCase().includes(q)) ||
+        (i.consecutivo && i.consecutivo.toString().includes(q)) ||
+        (i.tipoServicio && i.tipoServicio.toLowerCase().includes(q)) ||
+        (i.tipoServicio && formatTipoServicio(i.tipoServicio, i.esReinspeccion).toLowerCase().includes(q));
 
-    const matchesEstado = 
-      filterEstado === 'TODOS' || 
-      (filterEstado === 'ABIERTOS' 
-        ? (i.estado === 'INGRESADO' || i.estado === 'EN_INSPECCION')
-        : i.estado === filterEstado);
+      const matchesEstado = 
+        filterEstado === 'TODOS' || 
+        (filterEstado === 'ABIERTOS' 
+          ? (i.estado === 'INGRESADO' || i.estado === 'EN_INSPECCION')
+          : i.estado === filterEstado);
 
-    return matchesSearch && matchesEstado;
-  });
+      const matchesServicio = 
+        filterServicio === 'TODOS' ||
+        (filterServicio === 'REINSPECCION_GRATUITA' && (i.esReinspeccion || i.tipoServicio === 'REINSPECCION_GRATUITA')) ||
+        (filterServicio === 'RTM_LEGAL' && (!i.esReinspeccion && (i.tipoServicio === 'RTM_LEGAL' || i.tipoServicio === 'PRIMERA_VEZ' || !i.tipoServicio))) ||
+        (filterServicio === 'REVISION_PREVENTIVA' && (i.tipoServicio === 'REVISION_PREVENTIVA' || i.tipoServicio === 'PREVENTIVA')) ||
+        (filterServicio === 'PERITAJE' && i.tipoServicio === 'PERITAJE');
+
+      return matchesSearch && matchesEstado && matchesServicio;
+    })
+    .sort((a, b) => {
+      // Cola de Pista en orden FIFO de llegada: el primer vehículo en ingresar es el primero en la fila
+      const timeA = a.fechaIngreso ? new Date(a.fechaIngreso).getTime() : 0;
+      const timeB = b.fechaIngreso ? new Date(b.fechaIngreso).getTime() : 0;
+      if (timeA !== timeB) return timeA - timeB;
+      return (a.consecutivo || 0) - (b.consecutivo || 0);
+    });
 
   return (
     <div className="space-y-6">
@@ -444,7 +496,7 @@ export function InspectionPage() {
 
       {/* Toolbar: Search and Filter */}
       <div className="cda-glass rounded-2xl p-4 border border-cda-dark-700/80 space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div className="sm:col-span-2 relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             <input
@@ -454,9 +506,26 @@ export function InspectionPage() {
                 setSearchFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              placeholder="Buscar por placa, # turno o nombre del propietario..."
+              placeholder="Buscar por placa, # turno, servicio o propietario..."
               className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-slate-500 focus:border-cda-yellow-500 focus:outline-none"
             />
+          </div>
+
+          <div>
+            <select
+              value={filterServicio}
+              onChange={(e) => {
+                setFilterServicio(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white font-medium focus:border-cda-yellow-500 focus:outline-none"
+            >
+              <option value="TODOS">Todos los Servicios</option>
+              <option value="RTM_LEGAL">🔍 RTM & Emisiones</option>
+              <option value="REINSPECCION_GRATUITA">🎁 Reinspección ($0)</option>
+              <option value="REVISION_PREVENTIVA">🛠️ Revisión Preventiva</option>
+              <option value="PERITAJE">📋 Peritaje Completo</option>
+            </select>
           </div>
 
           <div className="flex items-center gap-2">
@@ -474,6 +543,16 @@ export function InspectionPage() {
               <option value="RECHAZADO">RTM Rechazada</option>
               <option value="FACTURADO">Facturados</option>
             </select>
+
+            <button
+              type="button"
+              onClick={() => loadData(false)}
+              disabled={isLoading || isRefreshing}
+              className="p-2.5 bg-cda-dark-900 hover:bg-cda-dark-800 text-slate-300 hover:text-cda-yellow-400 border border-cda-dark-700 rounded-xl transition-all flex items-center justify-center shrink-0"
+              title="Refrescar datos en vivo"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing || isLoading ? 'animate-spin text-cda-yellow-400' : ''}`} />
+            </button>
           </div>
         </div>
       </div>
@@ -500,21 +579,35 @@ export function InspectionPage() {
 
                   return (
                     <div key={i.id} className="cda-glass rounded-2xl p-4 border border-cda-dark-700/80 space-y-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2.5">
-                          <div className="p-2 rounded-xl bg-cda-yellow-500/10">
+                          <div className="p-2 rounded-xl bg-cda-yellow-500/10 shrink-0">
                             {getCategoryIcon(i.vehiculo?.categoria)}
                           </div>
                           <div>
-                            <span className="whitespace-nowrap inline-flex items-center px-2 py-0.5 rounded bg-cda-yellow-400 text-black font-mono font-black text-xs tracking-wider">
-                              {formatPlaca(i.vehiculo?.placa)}
-                            </span>
-                            <p className="text-[10px] text-slate-400 mt-0.5">
-                              {i.vehiculo?.marca} {i.vehiculo?.linea} • Turno #{i.consecutivo || 'S/N'}
-                            </p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="whitespace-nowrap inline-flex items-center px-2 py-0.5 rounded bg-cda-yellow-400 text-black font-mono font-black text-xs tracking-wider">
+                                {formatPlaca(i.vehiculo?.placa)}
+                              </span>
+                              <ServicioBadge tipoServicio={i.tipoServicio} esReinspeccion={i.esReinspeccion} size="xs" />
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5 flex-wrap">
+                              <span>{i.vehiculo?.marca} {i.vehiculo?.linea}</span>
+                              <span>•</span>
+                              <span className="font-mono text-amber-300 font-bold">Turno #{i.consecutivo || 'S/N'}</span>
+                              {i.fechaIngreso && (
+                                <>
+                                  <span>•</span>
+                                  <span className="inline-flex items-center gap-0.5 text-slate-300 font-mono">
+                                    <Clock className="w-2.5 h-2.5 text-cda-yellow-400 shrink-0" />
+                                    <span>{formatHora(i.fechaIngreso)}</span>
+                                  </span>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        <div>{getEstadoBadge(i.estado)}</div>
+                        <div className="shrink-0">{getEstadoBadge(i.estado)}</div>
                       </div>
 
                       {/* Rejection Highlight Banner on Mobile */}
@@ -672,9 +765,20 @@ export function InspectionPage() {
                                   <span className="whitespace-nowrap inline-flex items-center px-2 py-0.5 rounded bg-cda-yellow-400 text-black font-mono font-black text-xs tracking-wider">
                                     {formatPlaca(i.vehiculo?.placa)}
                                   </span>
-                                  <p className="text-[10px] text-slate-400 mt-0.5">
-                                    {i.vehiculo?.marca} {i.vehiculo?.linea} ({i.vehiculo?.modelo}) • Turno #{i.consecutivo || 'S/N'}
-                                  </p>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5 flex-wrap">
+                                    <span>{i.vehiculo?.marca} {i.vehiculo?.linea} ({i.vehiculo?.modelo})</span>
+                                    <span>•</span>
+                                    <span className="font-mono text-amber-300 font-bold">Turno #{i.consecutivo || 'S/N'}</span>
+                                    {i.fechaIngreso && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="inline-flex items-center gap-0.5 text-slate-300 font-mono">
+                                          <Clock className="w-2.5 h-2.5 text-cda-yellow-400 shrink-0" />
+                                          <span>{formatHora(i.fechaIngreso)}</span>
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </td>
@@ -688,7 +792,9 @@ export function InspectionPage() {
 
                             <td className="p-3.5">
                               <p className="font-mono text-slate-200">{i.kilometraje?.toLocaleString('es-CO')} km</p>
-                              <p className="text-[10px] text-slate-400">{i.tipoServicio}</p>
+                              <div className="mt-1">
+                                <ServicioBadge tipoServicio={i.tipoServicio} esReinspeccion={i.esReinspeccion} size="xs" />
+                              </div>
                             </td>
 
                             <td className="p-3.5">
@@ -824,13 +930,14 @@ export function InspectionPage() {
                   {getCategoryIcon(selectedOrden.vehiculo?.categoria)}
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="whitespace-nowrap inline-flex items-center px-2.5 py-0.5 rounded-lg bg-cda-yellow-400 text-black font-mono font-black text-sm tracking-wider">
                       {formatPlaca(selectedOrden.vehiculo?.placa)}
                     </span>
                     <span className="text-xs bg-cda-dark-950 text-slate-300 font-mono px-2 py-0.5 rounded border border-cda-dark-700">
                       Turno #{selectedOrden.consecutivo || 'S/N'}
                     </span>
+                    <ServicioBadge tipoServicio={selectedOrden.tipoServicio} esReinspeccion={selectedOrden.esReinspeccion} size="sm" />
                     {getEstadoBadge(selectedOrden.estado)}
                   </div>
                   <p className="text-xs text-slate-300 mt-0.5">
@@ -939,8 +1046,8 @@ export function InspectionPage() {
                 </div>
               )}
 
-              {/* Propietario & Conductor Info */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-cda-dark-900/80 p-3.5 rounded-2xl border border-cda-dark-800">
+              {/* Propietario, Conductor & Fecha/Hora de Ingreso */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-cda-dark-900/80 p-3.5 rounded-2xl border border-cda-dark-800">
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase font-bold">Propietario Legal:</span>
                   <p className="font-bold text-white mt-0.5">{selectedOrden.vehiculo?.propietario?.nombresRazonSocial || 'No asignado'}</p>
@@ -956,6 +1063,17 @@ export function InspectionPage() {
                   </p>
                   <p className="text-[11px] font-mono text-slate-400">
                     {selectedOrden.conductor ? `Cel: ${formatPhone(selectedOrden.conductor.celular)}` : 'Mismos datos de propietario'}
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Fecha & Hora de Ingreso:</span>
+                  <p className="font-mono font-bold text-cda-yellow-400 mt-0.5 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-cda-yellow-400 shrink-0" />
+                    <span>{formatFechaHora(selectedOrden.fechaIngreso) || 'Hoy'}</span>
+                  </p>
+                  <p className="text-[11px] font-mono text-slate-400">
+                    Consecutivo Turno: <strong className="text-white">#{selectedOrden.consecutivo || 'S/N'}</strong>
                   </p>
                 </div>
               </div>

@@ -16,7 +16,9 @@ import {
   X, 
   ShieldCheck, 
   ShieldAlert,
-  ListOrdered
+  ListOrdered,
+  RefreshCw,
+  Clock
 } from 'lucide-react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { vehiculoService } from '../../services/vehiculoService';
@@ -28,8 +30,9 @@ import { Cliente } from '../../types/cliente';
 import { OrdenIngreso, EstadoOrden, OrdenIngresoFormData } from '../../types/ingreso';
 import { ReinspeccionVerificacion } from '../../types/reinspeccion';
 import { TipoDocumento } from '../../types/auth';
-import { formatPlaca, handlePlacaInput, cleanPlaca, handlePhoneInput, formatPhone, formatDocumento, sanitizeDate } from '../../utils/formatters';
+import { formatPlaca, handlePlacaInput, cleanPlaca, handlePhoneInput, formatPhone, formatDocumento, sanitizeDate, formatTipoServicio, formatFechaHora, formatHora } from '../../utils/formatters';
 import { Pagination } from '../../components/common/Pagination';
+import { ServicioBadge } from '../../components/common/ServicioBadge';
 import { TicketTermicoModal } from './TicketTermicoModal';
 
 export function ReceptionPage() {
@@ -88,6 +91,7 @@ export function ReceptionPage() {
   const [ingresosHoy, setIngresosHoy] = useState<OrdenIngreso[]>([]);
   const [searchFilter, setSearchFilter] = useState('');
   const [filterEstado, setFilterEstado] = useState<string>('TODOS');
+  const [filterServicio, setFilterServicio] = useState<string>('TODOS');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -97,21 +101,44 @@ export function ReceptionPage() {
   // Banner de éxito no invasivo tras crear orden
   const [ordenCreadaBanner, setOrdenCreadaBanner] = useState<OrdenIngreso | null>(null);
   const [selectedTicketOrden, setSelectedTicketOrden] = useState<OrdenIngreso | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const loadIngresosHoy = async () => {
+  const loadIngresosHoy = async (silent = false) => {
     try {
+      if (!silent) setIsRefreshing(true);
       const list = await ingresoService.getIngresosHoy();
       setIngresosHoy(list);
     } catch {
       // Ignorar
+    } finally {
+      if (!silent) setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
-    loadIngresosHoy();
+    loadIngresosHoy(false);
     if (initialPlacaParam) {
       handleBuscarPlaca(initialPlacaParam);
     }
+
+    // 1. Polling reactivo cada 6 segundos para sincronización en tiempo real
+    const interval = setInterval(() => {
+      loadIngresosHoy(true);
+    }, 6000);
+
+    // 2. Revalidación inmediata al enfocar la pestaña
+    const handleRevalidate = () => {
+      loadIngresosHoy(true);
+    };
+
+    window.addEventListener('focus', handleRevalidate);
+    document.addEventListener('visibilitychange', handleRevalidate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleRevalidate);
+      document.removeEventListener('visibilitychange', handleRevalidate);
+    };
   }, [initialPlacaParam]);
 
   // Click outside to close plate suggestions
@@ -317,7 +344,7 @@ export function ReceptionPage() {
         payload.propietarioData = {
           tipoDocumento: propietarioTipoDoc,
           numeroDocumento: propietarioDoc.trim(),
-          nombresRazonSocial: propietarioNombre.trim(),
+          nombresRazonSocial: propietarioNombre.trim().toUpperCase(),
           celular: propietarioCelular.trim(),
           email: propietarioEmail.trim() || undefined,
         };
@@ -332,7 +359,7 @@ export function ReceptionPage() {
           payload.conductorData = {
             tipoDocumento: propietarioTipoDoc,
             numeroDocumento: propietarioDoc.trim(),
-            nombresRazonSocial: propietarioNombre.trim(),
+            nombresRazonSocial: propietarioNombre.trim().toUpperCase(),
             celular: propietarioCelular.trim(),
             email: propietarioEmail.trim() || undefined,
           };
@@ -348,7 +375,7 @@ export function ReceptionPage() {
           payload.conductorData = {
             tipoDocumento: conductorTipoDoc,
             numeroDocumento: conductorDoc.trim(),
-            nombresRazonSocial: conductorNombre.trim(),
+            nombresRazonSocial: conductorNombre.trim().toUpperCase(),
             celular: conductorCelular.trim(),
           };
         }
@@ -394,15 +421,35 @@ export function ReceptionPage() {
     }
   };
 
-  const filteredIngresos = ingresosHoy.filter((i) => {
-    const matchesSearch = 
-      (i.vehiculo?.placa && i.vehiculo.placa.toLowerCase().includes(searchFilter.toLowerCase())) ||
-      (i.vehiculo?.propietario?.nombresRazonSocial && i.vehiculo.propietario.nombresRazonSocial.toLowerCase().includes(searchFilter.toLowerCase())) ||
-      (i.consecutivo && i.consecutivo.toString().includes(searchFilter));
+  const filteredIngresos = ingresosHoy
+    .filter((i) => {
+      const q = searchFilter.toLowerCase().trim();
+      const matchesSearch = 
+        !q ||
+        (i.vehiculo?.placa && i.vehiculo.placa.toLowerCase().includes(q)) ||
+        (i.vehiculo?.propietario?.nombresRazonSocial && i.vehiculo.propietario.nombresRazonSocial.toLowerCase().includes(q)) ||
+        (i.consecutivo && i.consecutivo.toString().includes(q)) ||
+        (i.tipoServicio && i.tipoServicio.toLowerCase().includes(q)) ||
+        (i.tipoServicio && formatTipoServicio(i.tipoServicio, i.esReinspeccion).toLowerCase().includes(q));
 
-    const matchesEstado = filterEstado === 'TODOS' || i.estado === filterEstado;
-    return matchesSearch && matchesEstado;
-  });
+      const matchesEstado = filterEstado === 'TODOS' || i.estado === filterEstado;
+
+      const matchesServicio = 
+        filterServicio === 'TODOS' ||
+        (filterServicio === 'REINSPECCION_GRATUITA' && (i.esReinspeccion || i.tipoServicio === 'REINSPECCION_GRATUITA')) ||
+        (filterServicio === 'RTM_LEGAL' && (!i.esReinspeccion && (i.tipoServicio === 'RTM_LEGAL' || i.tipoServicio === 'PRIMERA_VEZ' || !i.tipoServicio))) ||
+        (filterServicio === 'REVISION_PREVENTIVA' && (i.tipoServicio === 'REVISION_PREVENTIVA' || i.tipoServicio === 'PREVENTIVA')) ||
+        (filterServicio === 'PERITAJE' && i.tipoServicio === 'PERITAJE');
+
+      return matchesSearch && matchesEstado && matchesServicio;
+    })
+    .sort((a, b) => {
+      // Orden FIFO de llegada: el primer vehículo en ingresar es el primero en la cola
+      const timeA = a.fechaIngreso ? new Date(a.fechaIngreso).getTime() : 0;
+      const timeB = b.fechaIngreso ? new Date(b.fechaIngreso).getTime() : 0;
+      if (timeA !== timeB) return timeA - timeB;
+      return (a.consecutivo || 0) - (b.consecutivo || 0);
+    });
 
   const getCategoryIcon = (categoria?: string) => {
     switch (categoria) {
@@ -417,42 +464,42 @@ export function ReceptionPage() {
     switch (estado) {
       case 'INGRESADO':
         return (
-          <span className="bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            <span>EN ESPERA DE PISTA</span>
+          <span className="bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <span className="whitespace-nowrap">EN ESPERA DE PISTA</span>
           </span>
         );
       case 'EN_INSPECCION':
         return (
-          <span className="bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
-            <Wrench className="w-3 h-3 text-blue-400 animate-spin" />
-            <span>EN PISTA DE PRUEBAS</span>
+          <span className="bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+            <Wrench className="w-3 h-3 text-blue-400 animate-spin shrink-0" />
+            <span className="whitespace-nowrap">EN PISTA DE PRUEBAS</span>
           </span>
         );
       case 'APROBADO':
         return (
-          <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3" />
-            <span>RTM APROBADA</span>
+          <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+            <ShieldCheck className="w-3 h-3 shrink-0" />
+            <span className="whitespace-nowrap">RTM APROBADA</span>
           </span>
         );
       case 'RECHAZADO':
         return (
-          <span className="bg-rose-500/15 text-rose-400 border border-rose-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
-            <ShieldAlert className="w-3 h-3" />
-            <span>RTM RECHAZADA</span>
+          <span className="bg-rose-500/15 text-rose-400 border border-rose-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+            <ShieldAlert className="w-3 h-3 shrink-0" />
+            <span className="whitespace-nowrap">RTM RECHAZADA</span>
           </span>
         );
       case 'FACTURADO':
         return (
-          <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1">
-            <Receipt className="w-3 h-3" />
-            <span>FACTURADO</span>
+          <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+            <Receipt className="w-3 h-3 shrink-0" />
+            <span className="whitespace-nowrap">FACTURADO</span>
           </span>
         );
       default:
         return (
-          <span className="bg-slate-700 text-slate-300 px-2.5 py-0.5 rounded-full text-[10px]">
+          <span className="bg-slate-700 text-slate-300 px-2.5 py-0.5 rounded-full text-[10px] whitespace-nowrap shrink-0">
             {estado}
           </span>
         );
@@ -516,9 +563,10 @@ export function ReceptionPage() {
                 <span className="whitespace-nowrap inline-flex items-center px-2.5 py-0.5 rounded-lg bg-cda-yellow-400 text-black font-mono font-black text-xs tracking-wider shadow-sm">
                   {formatPlaca(ordenCreadaBanner.vehiculo?.placa)}
                 </span>
+                <ServicioBadge tipoServicio={ordenCreadaBanner.tipoServicio} esReinspeccion={ordenCreadaBanner.esReinspeccion} size="sm" />
               </div>
               <p className="text-[11px] text-slate-300 mt-0.5">
-                Consecutivo: <strong className="font-mono text-cda-yellow-400">#{ordenCreadaBanner.consecutivo || 'S/N'}</strong> • Propietario: {ordenCreadaBanner.vehiculo?.propietario?.nombresRazonSocial || 'No asignado'}
+                Consecutivo: <strong className="font-mono text-cda-yellow-400">#{ordenCreadaBanner.consecutivo || 'S/N'}</strong> • {formatFechaHora(ordenCreadaBanner.fechaIngreso) || 'Registrado ahora'} • Propietario: {ordenCreadaBanner.vehiculo?.propietario?.nombresRazonSocial || 'No asignado'}
               </p>
             </div>
           </div>
@@ -866,7 +914,7 @@ export function ReceptionPage() {
             {propietarioEncontrado && !isEditingPropietario ? (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-cda-dark-950 border border-cda-dark-800 text-xs">
                 <div>
-                  <p className="font-bold text-white text-sm">{propietarioEncontrado.nombresRazonSocial}</p>
+                  <p className="font-bold text-white text-sm uppercase">{propietarioEncontrado.nombresRazonSocial}</p>
                   <p className="text-[11px] font-mono text-slate-400">
                     {propietarioEncontrado.tipoDocumento} {formatDocumento(propietarioEncontrado.numeroDocumento)} • Cel: {formatPhone(propietarioEncontrado.celular)}
                   </p>
@@ -907,9 +955,9 @@ export function ReceptionPage() {
                   <input
                     type="text"
                     value={propietarioNombre}
-                    onChange={(e) => setPropietarioNombre(e.target.value)}
+                    onChange={(e) => setPropietarioNombre(e.target.value.toUpperCase())}
                     placeholder="Nombres o Razón Social *"
-                    className="w-full bg-cda-dark-950 border border-cda-dark-700 text-white text-xs rounded-xl px-3 py-2"
+                    className="w-full bg-cda-dark-950 border border-cda-dark-700 text-white text-xs rounded-xl px-3 py-2 uppercase"
                     required
                   />
                 </div>
@@ -1002,9 +1050,9 @@ export function ReceptionPage() {
                     <input
                       type="text"
                       value={conductorNombre}
-                      onChange={(e) => setConductorNombre(e.target.value)}
+                      onChange={(e) => setConductorNombre(e.target.value.toUpperCase())}
                       placeholder="Nombre Completo Conductor *"
-                      className="w-full bg-cda-dark-950 border border-cda-dark-700 text-white text-xs rounded-xl px-3 py-2"
+                      className="w-full bg-cda-dark-950 border border-cda-dark-700 text-white text-xs rounded-xl px-3 py-2 uppercase"
                       required
                     />
                   </div>
@@ -1078,7 +1126,7 @@ export function ReceptionPage() {
         <div className="space-y-4">
           {/* Toolbar & Filters */}
           <div className="cda-glass rounded-2xl p-4 border border-cda-dark-700/80 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div className="sm:col-span-2 relative">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
@@ -1088,19 +1136,36 @@ export function ReceptionPage() {
                     setSearchFilter(e.target.value);
                     setCurrentPage(1);
                   }}
-                  placeholder="Buscar por placa, # turno o nombre del propietario..."
+                  placeholder="Buscar por placa, # turno, servicio o propietario..."
                   className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-slate-500 focus:border-cda-yellow-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <select
+                  value={filterServicio}
+                  onChange={(e) => {
+                    setFilterServicio(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white font-medium focus:border-cda-yellow-500 focus:outline-none"
+                >
+                  <option value="TODOS">Todos los Servicios</option>
+                  <option value="RTM_LEGAL">🔍 RTM & Emisiones</option>
+                  <option value="REINSPECCION_GRATUITA">🎁 Reinspección ($0)</option>
+                  <option value="REVISION_PREVENTIVA">🛠️ Revisión Preventiva</option>
+                  <option value="PERITAJE">📋 Peritaje Completo</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2">
+                <select
                   value={filterEstado}
                   onChange={(e) => {
                     setFilterEstado(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white font-medium focus:border-cda-yellow-500 focus:outline-none"
+                  className="flex-1 bg-cda-dark-900 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white font-medium focus:border-cda-yellow-500 focus:outline-none"
                 >
                   <option value="TODOS">Todos los Estados</option>
                   <option value="INGRESADO">En Espera de Pista</option>
@@ -1109,6 +1174,15 @@ export function ReceptionPage() {
                   <option value="RECHAZADO">RTM Rechazada</option>
                   <option value="FACTURADO">Facturados</option>
                 </select>
+                <button
+                  type="button"
+                  onClick={() => loadIngresosHoy(false)}
+                  disabled={isRefreshing}
+                  title="Actualizar datos en tiempo real"
+                  className="p-2.5 bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 hover:text-white border border-cda-dark-700 rounded-xl transition-colors shrink-0 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 text-cda-yellow-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+                </button>
               </div>
             </div>
           </div>
@@ -1124,21 +1198,35 @@ export function ReceptionPage() {
                 .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
                 .map((i) => (
                   <div key={i.id} className="cda-glass rounded-2xl p-4 border border-cda-dark-700/80 space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5">
-                        <div className="p-2 rounded-xl bg-cda-yellow-500/10">
+                        <div className="p-2 rounded-xl bg-cda-yellow-500/10 shrink-0">
                           {getCategoryIcon(i.vehiculo?.categoria)}
                         </div>
                         <div>
-                          <span className="font-mono font-black text-cda-yellow-400 text-sm">
-                            {formatPlaca(i.vehiculo?.placa)}
-                          </span>
-                          <p className="text-[10px] text-slate-400">
-                            {i.vehiculo?.marca} {i.vehiculo?.linea} • Turno #{i.consecutivo || 'S/N'}
-                          </p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono font-black text-cda-yellow-400 text-sm">
+                                {formatPlaca(i.vehiculo?.placa)}
+                              </span>
+                              <ServicioBadge tipoServicio={i.tipoServicio} esReinspeccion={i.esReinspeccion} size="xs" />
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5 flex-wrap">
+                              <span>{i.vehiculo?.marca} {i.vehiculo?.linea}</span>
+                              <span>•</span>
+                              <span className="font-mono text-amber-300 font-bold">Turno #{i.consecutivo || 'S/N'}</span>
+                              {i.fechaIngreso && (
+                                <>
+                                  <span>•</span>
+                                  <span className="inline-flex items-center gap-0.5 text-slate-300 font-mono">
+                                    <Clock className="w-2.5 h-2.5 text-cda-yellow-400 shrink-0" />
+                                    <span>{formatHora(i.fechaIngreso)}</span>
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <div>{getEstadoBadge(i.estado)}</div>
+                        <div className="shrink-0">{getEstadoBadge(i.estado)}</div>
                     </div>
 
                     <div className="text-[11px] text-slate-300 space-y-0.5 pt-2 border-t border-cda-dark-800">
@@ -1224,9 +1312,20 @@ export function ReceptionPage() {
                                 <span className="font-mono font-black text-cda-yellow-400 text-sm">
                                   {formatPlaca(i.vehiculo?.placa)}
                                 </span>
-                                <p className="text-[10px] text-slate-400">
-                                  {i.vehiculo?.marca} {i.vehiculo?.linea} • Turno #{i.consecutivo || 'S/N'}
-                                </p>
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5 flex-wrap">
+                                  <span>{i.vehiculo?.marca} {i.vehiculo?.linea}</span>
+                                  <span>•</span>
+                                  <span className="font-mono text-amber-300 font-bold">Turno #{i.consecutivo || 'S/N'}</span>
+                                  {i.fechaIngreso && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="inline-flex items-center gap-0.5 text-slate-300 font-mono">
+                                        <Clock className="w-2.5 h-2.5 text-cda-yellow-400 shrink-0" />
+                                        <span>{formatHora(i.fechaIngreso)}</span>
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </td>
@@ -1240,7 +1339,9 @@ export function ReceptionPage() {
 
                           <td className="p-3.5">
                             <p className="font-mono text-slate-200">{i.kilometraje?.toLocaleString('es-CO')} km</p>
-                            <p className="text-[10px] text-slate-400">{i.tipoServicio}</p>
+                            <div className="mt-1">
+                              <ServicioBadge tipoServicio={i.tipoServicio} esReinspeccion={i.esReinspeccion} size="xs" />
+                            </div>
                           </td>
 
                           <td className="p-3.5">

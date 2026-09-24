@@ -34,6 +34,15 @@ export interface Factura {
   pdfSiigoUrl?: string;
   cufe?: string;
   mensajeRespuestaDian?: string;
+
+  // Desglose Regulatorio Colombiano (RTM Dispersión & Ingreso Real CDA)
+  valorServicioCda?: number;
+  runt?: number;
+  sicov?: number;
+  operador?: number;
+  seguridadVial?: number;
+  fupa?: number;
+  totalTerceros?: number;
 }
 
 export interface FacturaFormData {

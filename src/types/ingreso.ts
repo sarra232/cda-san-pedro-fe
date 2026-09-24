@@ -23,6 +23,7 @@ export interface PruebaInspeccion {
 export interface OrdenIngreso {
   id: string;
   consecutivo: number;
+  turnoDiario?: number;
   fechaIngreso: string;
   kilometraje: number;
   tipoServicio: string;

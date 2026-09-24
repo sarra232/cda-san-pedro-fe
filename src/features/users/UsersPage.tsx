@@ -12,11 +12,14 @@ import {
   Shield, 
   CreditCard,
   Trash2,
-  Lock
+  Lock,
+  Mail,
+  RefreshCw
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { User, RolUsuario } from '../../types/auth';
 import { userService } from '../../services/userService';
+import { authService } from '../../services/authService';
 import { formatDocumento } from '../../utils/formatters';
 import { Pagination } from '../../components/common/Pagination';
 import { UsuarioModal } from './UsuarioModal';
@@ -27,9 +30,11 @@ export function UsersPage() {
 
   const [usuarios, setUsuarios] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [reseteandoId, setReseteandoId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRol, setFilterRol] = useState<string>('TODOS');
-  const [filterEstado, setFilterEstado] = useState<string>('TODOS');
+  const [filterEstado, setFilterEstado] = useState<string>('ACTIVO');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -39,20 +44,45 @@ export function UsersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  const loadUsuarios = async () => {
-    setIsLoading(true);
+  const loadUsuarios = async (silent = false) => {
+    if (!silent) {
+      if (usuarios.length === 0) setIsLoading(true);
+      setIsRefreshing(true);
+    }
     try {
       const list = await userService.getUsuarios();
       setUsuarios(list);
     } catch {
       // Manejo silencioso
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadUsuarios();
+    loadUsuarios(false);
+
+    // Polling reactivo cada 10 segundos
+    const interval = setInterval(() => {
+      loadUsuarios(true);
+    }, 10000);
+
+    // Revalidación inmediata al volver a la pestaña
+    const handleRevalidate = () => {
+      loadUsuarios(true);
+    };
+
+    window.addEventListener('focus', handleRevalidate);
+    document.addEventListener('visibilitychange', handleRevalidate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleRevalidate);
+      document.removeEventListener('visibilitychange', handleRevalidate);
+    };
   }, []);
 
   const handleToggleEstado = async (u: User) => {
@@ -80,6 +110,27 @@ export function UsersPage() {
       loadUsuarios();
     } catch {
       alert('Error al eliminar usuario. Puede tener registros históricos asociados en pista o facturación.');
+    }
+  };
+
+  const handleResetPassword = async (u: User) => {
+    if (!isAdmin) return;
+    const confirm = window.confirm(`¿Desea enviar un correo para resetear la contraseña del usuario ${u.nombresApellidos} (Documento: ${u.numeroDocumento})?`);
+    if (!confirm) return;
+
+    try {
+      setReseteandoId(u.id);
+      const msg = await authService.solicitarRecuperacion(u.numeroDocumento);
+      alert(msg || `Se ha enviado el correo para resetear la contraseña a ${u.nombresApellidos}`);
+    } catch (err: unknown) {
+      let msg = 'Error al enviar correo de restablecimiento';
+      if (err && typeof err === 'object' && 'response' in err) {
+        const resData = (err as { response: { data?: { message?: string } } }).response?.data;
+        if (resData?.message) msg = resData.message;
+      }
+      alert(msg);
+    } finally {
+      setReseteandoId(null);
     }
   };
 
@@ -192,6 +243,72 @@ export function UsersPage() {
 
       {/* Filters & Search Toolbar */}
       <div className="cda-glass rounded-2xl p-4 border border-cda-dark-700/80 space-y-3">
+        {/* Selector de Segmentos de Estado */}
+        <div className="flex items-center gap-2 flex-wrap pb-1">
+          <button
+            type="button"
+            onClick={() => {
+              setFilterEstado('ACTIVO');
+              setCurrentPage(1);
+            }}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              filterEstado === 'ACTIVO'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                : 'bg-cda-dark-900 text-slate-400 border border-cda-dark-700 hover:text-white hover:bg-cda-dark-800'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span>Activos en el Sistema</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-[10px] font-mono font-bold text-emerald-300">
+              {usuarios.filter((u) => u.activo !== false).length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFilterEstado('INACTIVO');
+              setCurrentPage(1);
+            }}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              filterEstado === 'INACTIVO'
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm'
+                : 'bg-cda-dark-900 text-slate-400 border border-cda-dark-700 hover:text-white hover:bg-cda-dark-800'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+            <span>Inactivos / Bloqueados</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-[10px] font-mono font-bold text-rose-300">
+              {usuarios.filter((u) => u.activo === false).length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFilterEstado('TODOS');
+              setCurrentPage(1);
+            }}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              filterEstado === 'TODOS'
+                ? 'bg-cda-dark-800 text-white border border-cda-dark-600 shadow-sm'
+                : 'bg-cda-dark-900 text-slate-400 border border-cda-dark-700 hover:text-white hover:bg-cda-dark-800'
+            }`}
+          >
+            <span>Todos los Usuarios</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-cda-dark-800 text-[10px] font-mono font-bold text-slate-300">
+              {usuarios.length}
+            </span>
+          </button>
+        </div>
+
+        {filterEstado === 'INACTIVO' && (
+          <div className="bg-rose-950/20 border border-rose-500/30 rounded-xl p-3 flex items-center gap-2.5 text-xs text-rose-300">
+            <ShieldAlert className="w-4 h-4 shrink-0 text-rose-400" />
+            <span>Mostrando únicamente usuarios inactivos o bloqueados en el sistema. Puede activarlos nuevamente haciendo clic en el icono de reactivación.</span>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           {/* Search Bar */}
           <div className="sm:col-span-2 relative">
@@ -228,19 +345,28 @@ export function UsersPage() {
           </div>
 
           {/* Status Filter */}
-          <div>
+          <div className="flex gap-2">
             <select
               value={filterEstado}
               onChange={(e) => {
                 setFilterEstado(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white font-medium focus:border-cda-yellow-500 focus:outline-none"
+              className="flex-1 bg-cda-dark-900 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white font-medium focus:border-cda-yellow-500 focus:outline-none"
             >
-              <option value="TODOS">Todos los Estados</option>
               <option value="ACTIVO">✓ Solo Activos</option>
               <option value="INACTIVO">✕ Solo Inactivos</option>
+              <option value="TODOS">Todos los Estados</option>
             </select>
+            <button
+              type="button"
+              onClick={() => loadUsuarios(false)}
+              disabled={isRefreshing}
+              title="Actualizar datos en tiempo real"
+              className="p-2.5 bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 hover:text-white border border-cda-dark-700 rounded-xl transition-colors shrink-0 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 text-cda-yellow-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         </div>
       </div>
@@ -271,7 +397,7 @@ export function UsersPage() {
                             {u.nombresApellidos.charAt(0)}
                           </div>
                           <div>
-                            <p className="font-bold text-white text-xs">{u.nombresApellidos}</p>
+                            <p className="font-bold text-white text-xs uppercase">{u.nombresApellidos}</p>
                             <p className="text-[11px] font-mono text-slate-400">
                               {u.tipoDocumento} {formatDocumento(u.numeroDocumento)}
                             </p>
@@ -316,6 +442,25 @@ export function UsersPage() {
                           </div>
                         )}
                       </div>
+
+                      {/* Botón explícito para Enviar Correo de Reset en móvil */}
+                      {isAdmin && (
+                        <div className="pt-2 border-t border-cda-dark-800">
+                          <button
+                            onClick={() => handleResetPassword(u)}
+                            disabled={reseteandoId === u.id}
+                            className="w-full py-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 active:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-sm"
+                            title="Enviar enlace por correo para resetear contraseña"
+                          >
+                            {reseteandoId === u.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                            ) : (
+                              <Mail className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            )}
+                            <span>Reset Clave</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))
               )}
@@ -323,15 +468,19 @@ export function UsersPage() {
 
             {/* DESKTOP TABLE VIEW (>= md) */}
             <div className="hidden md:block cda-glass rounded-2xl border border-cda-dark-700/80 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+              <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full min-w-[850px] text-left text-xs">
                   <thead className="text-slate-400 bg-cda-dark-900/80 border-b border-cda-dark-800">
                     <tr>
-                      <th className="p-4 font-semibold">Empleado</th>
-                      <th className="p-4 font-semibold">Documento</th>
-                      <th className="p-4 font-semibold">Rol Asignado</th>
-                      <th className="p-4 font-semibold">Estado Cuenta</th>
-                      {isAdmin && <th className="p-4 font-semibold text-right">Acciones de Administrador</th>}
+                      <th className="p-4 font-semibold whitespace-nowrap min-w-[180px]">Empleado</th>
+                      <th className="p-4 font-semibold whitespace-nowrap">Documento</th>
+                      <th className="p-4 font-semibold whitespace-nowrap">Rol Asignado</th>
+                      <th className="p-4 font-semibold whitespace-nowrap">Estado Cuenta</th>
+                      {isAdmin && (
+                        <th className="p-4 font-semibold text-right whitespace-nowrap sticky right-0 bg-cda-dark-900/95 backdrop-blur-sm z-10 shadow-[-12px_0_15px_-4px_rgba(0,0,0,0.5)] border-l border-cda-dark-800">
+                          Acciones de Administrador
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-cda-dark-800 text-slate-200">
@@ -345,25 +494,25 @@ export function UsersPage() {
                       filteredUsuarios
                         .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
                         .map((u) => (
-                          <tr key={u.id} className="hover:bg-cda-dark-800/40 transition-colors">
-                            <td className="p-4">
+                          <tr key={u.id} className="hover:bg-cda-dark-800/40 transition-colors group">
+                            <td className="p-4 min-w-[180px]">
                               <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-xl bg-cda-yellow-500/10 border border-cda-yellow-500/30 flex items-center justify-center text-cda-yellow-400 font-bold text-xs">
+                                <div className="w-8 h-8 rounded-xl bg-cda-yellow-500/10 border border-cda-yellow-500/30 flex items-center justify-center text-cda-yellow-400 font-bold text-xs shrink-0">
                                   {u.nombresApellidos.charAt(0)}
                                 </div>
-                                <span className="font-bold text-white">{u.nombresApellidos}</span>
+                                <span className="font-bold text-white whitespace-nowrap uppercase">{u.nombresApellidos}</span>
                               </div>
                             </td>
 
-                            <td className="p-4 font-mono text-slate-300">
+                            <td className="p-4 font-mono text-slate-300 whitespace-nowrap">
                               {u.tipoDocumento} {formatDocumento(u.numeroDocumento)}
                             </td>
 
-                            <td className="p-4">
+                            <td className="p-4 whitespace-nowrap">
                               {getRolBadge(u.rol)}
                             </td>
 
-                            <td className="p-4">
+                            <td className="p-4 whitespace-nowrap">
                               <span className={`inline-flex items-center gap-1 font-semibold ${u.activo !== false ? 'text-emerald-400' : 'text-rose-400'}`}>
                                 {u.activo !== false ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
                                 <span>{u.activo !== false ? 'Activo' : 'Inactivo'}</span>
@@ -371,7 +520,20 @@ export function UsersPage() {
                             </td>
 
                             {isAdmin && (
-                              <td className="p-4 text-right space-x-1.5">
+                              <td className="p-4 text-right space-x-1.5 whitespace-nowrap sticky right-0 bg-cda-dark-900/90 group-hover:bg-cda-dark-900 backdrop-blur-sm z-10 shadow-[-12px_0_15px_-4px_rgba(0,0,0,0.5)] border-l border-cda-dark-800">
+                                <button
+                                  onClick={() => handleResetPassword(u)}
+                                  disabled={reseteandoId === u.id}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 active:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/30 text-xs font-bold transition-all disabled:opacity-50 shadow-sm whitespace-nowrap"
+                                  title="Enviar enlace por correo para resetear contraseña"
+                                >
+                                  {reseteandoId === u.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                                  ) : (
+                                    <Mail className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  )}
+                                  <span>Reset Clave</span>
+                                </button>
                                 <button
                                   onClick={() => handleToggleEstado(u)}
                                   className={`p-1.5 rounded-lg border text-xs transition-colors inline-flex ${

@@ -126,7 +126,7 @@ export const NominaDetalleModal: React.FC<Props> = ({
                 {nomina.detalles?.map((det) => (
                   <tr key={det.id} className="hover:bg-slate-800/30">
                     <td className="py-2.5 px-3">
-                      <p className="font-bold text-white">{det.empleadoNombre}</p>
+                      <p className="font-bold text-white uppercase">{det.empleadoNombre}</p>
                       <p className="text-[10px] text-slate-400">{det.empleadoCargo} • CC {det.empleadoDocumento}</p>
                     </td>
                     <td className="py-2.5 px-3 font-mono text-center">{det.diasTrabajados}</td>

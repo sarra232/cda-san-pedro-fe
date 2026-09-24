@@ -14,7 +14,8 @@ import {
   Sparkles,
   TrendingUp,
   FileSpreadsheet,
-  RefreshCw
+  RefreshCw,
+  Briefcase
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
@@ -179,12 +180,70 @@ export function DashboardPage() {
         </Link>
       )}
 
+      {/* Panel Ejecutivo de Ganancia Real CDA (Exclusivo Administradores) */}
+      {isAdmin && (
+        <div className="p-5 sm:p-6 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-amber-950/40 via-cda-dark-850 to-amber-950/30 border border-cda-yellow-500/40 shadow-xl relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-wider bg-cda-yellow-400 text-slate-950 px-3.5 py-1.5 rounded-xl shadow-md whitespace-nowrap shrink-0">
+                  <Briefcase className="w-4 h-4 text-slate-950 shrink-0" />
+                  <span>Métrica Financiera Real</span>
+                </div>
+                <div className="inline-flex items-center gap-1.5 text-xs text-cda-yellow-400 font-bold bg-cda-yellow-400/10 px-3 py-1.5 rounded-xl border border-cda-yellow-400/20 whitespace-nowrap shrink-0">
+                  <span className="w-2 h-2 rounded-full bg-cda-yellow-400"></span>
+                  <span>Liquidación Neta del Día</span>
+                </div>
+              </div>
+              <div>
+                <span className="text-xs text-slate-300 font-medium block">¿Cuánto ganó en sí el CDA hoy?</span>
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <h2 className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cda-yellow-400 via-amber-300 to-yellow-200">
+                    {formatCOP(stats.gananciaNetaCdaHoy || 0)}
+                  </h2>
+                  <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg">
+                    {stats.margenCdaPorcentajeHoy || 0}% de Margen Neto
+                  </span>
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 max-w-xl">
+                Ingreso neto propio generado tras descontar automáticamente tasas de terceros (RUNT, SICOV, ANSV, Operador) e IVA 19%.
+              </p>
+            </div>
+
+            {/* Micro desglose financiero */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 bg-cda-dark-900/80 p-3 sm:p-4 rounded-2xl border border-cda-dark-700/80 shrink-0">
+              <div className="text-center px-2">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Recaudo Bruto</span>
+                <span className="text-xs sm:text-sm font-extrabold text-white">{formatCOP(stats.recaudoHoy)}</span>
+              </div>
+              <div className="text-center px-2 border-x border-cda-dark-700">
+                <span className="text-[10px] text-rose-400 uppercase font-bold block">Terceros (RUNT/SICOV)</span>
+                <span className="text-xs sm:text-sm font-extrabold text-rose-300">{formatCOP(stats.totalTercerosHoy || 0)}</span>
+              </div>
+              <div className="text-center px-2">
+                <span className="text-[10px] text-blue-400 uppercase font-bold block">IVA Fiscal</span>
+                <span className="text-xs sm:text-sm font-extrabold text-blue-300">{formatCOP(stats.totalIvaHoy || 0)}</span>
+              </div>
+            </div>
+
+            <Link
+              to="/reportes"
+              className="self-start lg:self-center bg-gradient-to-r from-cda-yellow-500 to-amber-500 hover:from-cda-yellow-400 hover:to-amber-400 text-black font-black px-4 py-3 rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-cda-yellow-500/20 transition-all shrink-0"
+            >
+              <span>Ver Liquidación Detallada</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Recaudo Hoy */}
         <div className="cda-glass rounded-2xl p-4 sm:p-5 border border-cda-dark-700/80 relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Recaudo del Día</span>
+            <span className="text-xs font-semibold text-slate-400">Recaudo del Día (Total Caja)</span>
             <div className="p-2 rounded-xl bg-cda-yellow-500/10 text-cda-yellow-400">
               <DollarSign className="w-4 h-4" />
             </div>

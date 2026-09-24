@@ -128,3 +128,126 @@ export function sanitizeDate(dateStr?: string | null): string | undefined {
   }
   return undefined;
 }
+
+export interface TipoServicioConfig {
+  code: string;
+  label: string;
+  shortLabel: string;
+  description: string;
+  icon: string;
+  badgeClass: string;
+}
+
+/**
+ * Obtiene la configuración de presentación visual de un tipo de servicio
+ */
+export function getTipoServicioConfig(tipoServicio?: string | null, esReinspeccion?: boolean): TipoServicioConfig {
+  if (esReinspeccion || tipoServicio === 'REINSPECCION_GRATUITA' || tipoServicio === 'REINSPECCION') {
+    return {
+      code: 'REINSPECCION_GRATUITA',
+      label: '2da Revisión / Reinspección ($0)',
+      shortLabel: 'Reinspección $0',
+      description: 'Reinspección reglamentaria gratuita (15 días calendario)',
+      icon: '🎁',
+      badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    };
+  }
+
+  const normalized = (tipoServicio || 'RTM_LEGAL').trim().toUpperCase();
+
+  switch (normalized) {
+    case 'RTM_LEGAL':
+    case 'PRIMERA_VEZ':
+    case 'RTM':
+      return {
+        code: 'RTM_LEGAL',
+        label: 'RTM & Emisiones Contaminantes',
+        shortLabel: 'RTM Legal',
+        description: 'Revisión Técnico-Mecánica y Emisiones de Gases reglamentaria',
+        icon: '🔍',
+        badgeClass: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+      };
+
+    case 'REVISION_PREVENTIVA':
+    case 'PREVENTIVA':
+      return {
+        code: 'REVISION_PREVENTIVA',
+        label: 'Revisión Preventiva / Pre-viaje',
+        shortLabel: 'Preventiva',
+        description: 'Diagnóstico técnico preventivo y estado general del vehículo',
+        icon: '🛠️',
+        badgeClass: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+      };
+
+    case 'PERITAJE':
+    case 'PERITAJE_VEHICULAR':
+    case 'PERITAJE_AUTOMOTRIZ':
+      return {
+        code: 'PERITAJE',
+        label: 'Peritaje Completo / Compraventa',
+        shortLabel: 'Peritaje',
+        description: 'Evaluación integral estructural, mecánica y documental',
+        icon: '📋',
+        badgeClass: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+      };
+
+    default:
+      return {
+        code: normalized,
+        label: normalized.replace(/_/g, ' '),
+        shortLabel: normalized.replace(/_/g, ' '),
+        description: 'Servicio CDA especializado',
+        icon: '⚡',
+        badgeClass: 'bg-slate-700/60 text-slate-200 border-slate-600/40',
+      };
+  }
+}
+
+/**
+ * Formatea el nombre legible del servicio seleccionado
+ */
+export function formatTipoServicio(tipoServicio?: string | null, esReinspeccion?: boolean): string {
+  return getTipoServicioConfig(tipoServicio, esReinspeccion).label;
+}
+
+/**
+ * Formatea una fecha y hora completa en formato legible colombiano
+ * Ejemplo: "23/09/2026 03:45 PM"
+ */
+export function formatFechaHora(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleString('es-CO', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Formatea únicamente la hora en formato 12h con AM/PM
+ * Ejemplo: "03:45 PM"
+ */
+export function formatHora(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('es-CO', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return '';
+  }
+}
+

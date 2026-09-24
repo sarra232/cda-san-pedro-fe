@@ -30,6 +30,7 @@ export const EmpleadoModal: React.FC<Props> = ({
   empleadoAEditar,
 }) => {
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [formData, setFormData] = useState<EmpleadoFormData>({
     tipoDocumento: 'CC',
     numeroDocumento: '',
@@ -50,61 +51,80 @@ export const EmpleadoModal: React.FC<Props> = ({
     rolApp: 'TECNICO_PISTA',
   });
 
+  const wasOpenRef = React.useRef(false);
+  const lastEmpleadoIdRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    if (empleadoAEditar) {
-      setFormData({
-        terceroId: empleadoAEditar.terceroId,
-        tipoDocumento: empleadoAEditar.tipoDocumento || 'CC',
-        numeroDocumento: empleadoAEditar.numeroDocumento || '',
-        nombresApellidos: empleadoAEditar.nombresApellidos || '',
-        celular: empleadoAEditar.celular || '',
-        email: empleadoAEditar.email || '',
-        direccion: empleadoAEditar.direccion || '',
-        cargo: empleadoAEditar.cargo || 'INSPECTOR_LINEA_LIVIANOS',
-        departamento: empleadoAEditar.departamento || 'OPERACIONES_PISTA',
-        tipoContrato: empleadoAEditar.tipoContrato || 'TERMINO_INDEFINIDO',
-        salarioBase: Number(empleadoAEditar.salarioBase) || 1600000,
-        auxilioTransporteAplica: Boolean(empleadoAEditar.auxilioTransporteAplica),
-        banco: empleadoAEditar.banco || '',
-        tipoCuenta: empleadoAEditar.tipoCuenta || 'AHORROS',
-        numeroCuenta: empleadoAEditar.numeroCuenta || '',
-        fechaIngreso: empleadoAEditar.fechaIngreso || new Date().toISOString().split('T')[0],
-        estado: empleadoAEditar.estado || 'ACTIVO',
-        rolApp: empleadoAEditar.rolApp || mapearCargoARol(empleadoAEditar.cargo || 'INSPECTOR_LINEA_LIVIANOS'),
-      });
+    if (isOpen) {
+      if (!wasOpenRef.current || (empleadoAEditar?.id && lastEmpleadoIdRef.current !== empleadoAEditar.id)) {
+        wasOpenRef.current = true;
+        lastEmpleadoIdRef.current = empleadoAEditar?.id || null;
+        setErrorMessage(null);
+        if (empleadoAEditar) {
+          setFormData({
+            terceroId: empleadoAEditar.terceroId,
+            tipoDocumento: empleadoAEditar.tipoDocumento || 'CC',
+            numeroDocumento: empleadoAEditar.numeroDocumento || '',
+            nombresApellidos: empleadoAEditar.nombresApellidos || '',
+            celular: empleadoAEditar.celular || '',
+            email: empleadoAEditar.email || '',
+            direccion: empleadoAEditar.direccion || '',
+            cargo: empleadoAEditar.cargo || 'INSPECTOR_LINEA_LIVIANOS',
+            departamento: empleadoAEditar.departamento || 'OPERACIONES_PISTA',
+            tipoContrato: empleadoAEditar.tipoContrato || 'TERMINO_INDEFINIDO',
+            salarioBase: Number(empleadoAEditar.salarioBase) || 1600000,
+            auxilioTransporteAplica: Boolean(empleadoAEditar.auxilioTransporteAplica),
+            banco: empleadoAEditar.banco || '',
+            tipoCuenta: empleadoAEditar.tipoCuenta || 'AHORROS',
+            numeroCuenta: empleadoAEditar.numeroCuenta || '',
+            fechaIngreso: empleadoAEditar.fechaIngreso || new Date().toISOString().split('T')[0],
+            estado: empleadoAEditar.estado || 'ACTIVO',
+            rolApp: empleadoAEditar.rolApp || mapearCargoARol(empleadoAEditar.cargo || 'INSPECTOR_LINEA_LIVIANOS'),
+          });
+        } else {
+          setFormData({
+            tipoDocumento: 'CC',
+            numeroDocumento: '',
+            nombresApellidos: '',
+            celular: '',
+            email: '',
+            direccion: '',
+            cargo: 'INSPECTOR_LINEA_LIVIANOS',
+            departamento: 'OPERACIONES_PISTA',
+            tipoContrato: 'TERMINO_INDEFINIDO',
+            salarioBase: 1600000,
+            auxilioTransporteAplica: true,
+            banco: 'BANCOLOMBIA',
+            tipoCuenta: 'AHORROS',
+            numeroCuenta: '',
+            fechaIngreso: new Date().toISOString().split('T')[0],
+            estado: 'ACTIVO',
+            rolApp: 'TECNICO_PISTA',
+          });
+        }
+      }
     } else {
-      setFormData({
-        tipoDocumento: 'CC',
-        numeroDocumento: '',
-        nombresApellidos: '',
-        celular: '',
-        email: '',
-        direccion: '',
-        cargo: 'INSPECTOR_LINEA_LIVIANOS',
-        departamento: 'OPERACIONES_PISTA',
-        tipoContrato: 'TERMINO_INDEFINIDO',
-        salarioBase: 1600000,
-        auxilioTransporteAplica: true,
-        banco: 'BANCOLOMBIA',
-        tipoCuenta: 'AHORROS',
-        numeroCuenta: '',
-        fechaIngreso: new Date().toISOString().split('T')[0],
-        estado: 'ACTIVO',
-        rolApp: 'TECNICO_PISTA',
-      });
+      wasOpenRef.current = false;
+      lastEmpleadoIdRef.current = null;
     }
-  }, [empleadoAEditar, isOpen]);
+  }, [empleadoAEditar?.id, isOpen]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
     try {
       setLoading(true);
-      await onSave(formData);
+      await onSave({
+        ...formData,
+        nombresApellidos: formData.nombresApellidos.trim().toUpperCase(),
+      });
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error al guardar empleado:', error);
+      const msg = error?.response?.data?.message || error?.message || 'Error al guardar colaborador. Verifique los datos e intente nuevamente.';
+      setErrorMessage(msg);
     } finally {
       setLoading(false);
     }
@@ -138,6 +158,13 @@ export const EmpleadoModal: React.FC<Props> = ({
 
         {/* Formulario */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto custom-scrollbar">
+          {errorMessage && (
+            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-start gap-2">
+              <span className="text-base">⚠️</span>
+              <div className="flex-1">{errorMessage}</div>
+            </div>
+          )}
+
           {/* Sección 1: Datos Personales */}
           <div>
             <h3 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
@@ -176,9 +203,9 @@ export const EmpleadoModal: React.FC<Props> = ({
                   type="text"
                   required
                   value={formData.nombresApellidos}
-                  onChange={(e) => setFormData({ ...formData, nombresApellidos: e.target.value })}
-                  placeholder="Ej: Juan Carlos Pérez Gómez"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  onChange={(e) => setFormData({ ...formData, nombresApellidos: e.target.value.toUpperCase() })}
+                  placeholder="Ej: JUAN CARLOS PÉREZ GÓMEZ"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white uppercase focus:outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -321,9 +348,9 @@ export const EmpleadoModal: React.FC<Props> = ({
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
                   >
                     <option value="ACTIVO">ACTIVO</option>
-                    <option value="EN_VACACIONES">EN VACACIONES</option>
+                    <option value="VACACIONES">EN VACACIONES</option>
                     <option value="INCAPACITADO">INCAPACITADO</option>
-                    <option value="INACTIVO">INACTIVO</option>
+                    <option value="LICENCIA">LICENCIA</option>
                     <option value="RETIRADO">RETIRADO</option>
                   </select>
                 </div>

@@ -49,3 +49,34 @@ export interface ApiResponse<T> {
   data: T;
   timestamp?: string;
 }
+
+export interface UsuarioPerfil {
+  id: string;
+  tipoDocumento: TipoDocumento;
+  numeroDocumento: string;
+  nombresApellidos: string;
+  rol: RolUsuario;
+  activo: boolean;
+  ultimoLogin?: string;
+  email?: string;
+  celular?: string;
+  direccion?: string;
+  cargo?: string;
+  departamento?: string;
+  fechaIngreso?: string;
+  createdAt?: string;
+}
+
+export interface ActualizarPerfilRequest {
+  nombresApellidos: string;
+  email?: string;
+  celular?: string;
+  direccion?: string;
+}
+
+export interface CambiarPasswordRequest {
+  passwordActual: string;
+  nuevoPassword: string;
+  confirmarNuevoPassword: string;
+}
+

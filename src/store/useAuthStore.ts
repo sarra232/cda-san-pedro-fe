@@ -13,10 +13,12 @@ interface AuthState {
   error: string | null;
   login: (credentials: LoginCredentials, rememberMe?: boolean) => Promise<void>;
   logout: (notifyStorage?: boolean | unknown) => void;
+  updateUser: (userUpdates: Partial<User>) => void;
   validateSession: () => Promise<boolean>;
   checkTokenValidity: () => boolean;
   clearError: () => void;
 }
+
 
 // Función auxiliar para verificar si un token JWT ha expirado en el navegador
 function isTokenExpired(token: string | null): boolean {
@@ -155,7 +157,17 @@ export const useAuthStore = create<AuthState>()(
           localStorage.removeItem('cda_logout_event');
         }
       },
+
+      updateUser: (userUpdates: Partial<User>) => {
+        const currentUser = get().user;
+        if (currentUser) {
+          const updated = { ...currentUser, ...userUpdates };
+          localStorage.setItem('cda_user', JSON.stringify(updated));
+          set({ user: updated });
+        }
+      },
     }),
+
     {
       name: 'cda_auth_session', // Clave única persistente y síncrona
       storage: createJSONStorage(() => localStorage),

@@ -29,7 +29,9 @@ export function NotificationsPage() {
   const [reloadingId, setReloadingId] = useState<string | null>(null);
 
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
-  const [testEmail, setTestEmail] = useState('');
+  const [testCanal, setTestCanal] = useState<'EMAIL' | 'WHATSAPP' | 'SMS'>('EMAIL');
+  const [testEmail, setTestEmail] = useState('wilsonsarrazola@gmail.com');
+  const [testTelefono, setTestTelefono] = useState('+57 311 3476312');
   const [testMessage, setTestMessage] = useState('');
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [testFeedback, setTestFeedback] = useState<{ success: boolean; msg: string } | null>(null);
@@ -69,36 +71,46 @@ export function NotificationsPage() {
     }
   };
 
-  const handleEnviarTestEmail = async (e: React.FormEvent) => {
+  const handleEnviarPrueba = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!testEmail.trim()) return;
-
     setIsSendingTest(true);
     setTestFeedback(null);
     try {
       let msg = '';
-      if (testTemplate === 'GENERAL') {
-        msg = await notificacionService.enviarCorreoPrueba(testEmail.trim(), testMessage.trim());
+      if (testCanal === 'EMAIL') {
+        if (!testEmail.trim()) return;
+        if (testTemplate === 'GENERAL') {
+          msg = await notificacionService.enviarCorreoPrueba(testEmail.trim(), testMessage.trim());
+        } else {
+          msg = await notificacionService.enviarPlantillaReal({
+            tipoPlantilla: testTemplate,
+            destinatario: testEmail.trim(),
+            nombreCliente: testNombre.trim(),
+            placa: testPlaca.trim().toUpperCase(),
+            categoriaVehiculo: testPlaca.endsWith('G') ? 'Motocicleta 4T' : 'Vehículo Liviano Particular',
+            numeroFactura: 'FV-2-22470',
+            total: testTotal,
+            metodoPago: testMetodo,
+            diasRestantes: testDias,
+            cuponOBeneficio: '15% de descuento en tu próxima revisión preventiva durante el mes de tu cumpleaños.',
+            mensaje: testMessage.trim(),
+          });
+        }
       } else {
-        msg = await notificacionService.enviarPlantillaReal({
-          tipoPlantilla: testTemplate,
-          destinatario: testEmail.trim(),
-          nombreCliente: testNombre.trim(),
-          placa: testPlaca.trim().toUpperCase(),
-          categoriaVehiculo: testPlaca.endsWith('G') ? 'Motocicleta 4T' : 'Vehículo Liviano Particular',
-          numeroFactura: 'FV-2-22470',
-          total: testTotal,
-          metodoPago: testMetodo,
-          diasRestantes: testDias,
-          cuponOBeneficio: '15% de descuento en tu próxima revisión preventiva durante el mes de tu cumpleaños.',
-          mensaje: testMessage.trim(),
-        });
+        if (!testTelefono.trim()) return;
+        const mensajeFinal = testMessage.trim() || 
+          (testCanal === 'WHATSAPP' 
+            ? `Hola ${testNombre}! Te recordamos que la revisión técnico-mecánica de tu vehículo ${testPlaca} está próxima a vencer en CDA San Pedro.` 
+            : `CDA San Pedro: Hola ${testNombre}, recordatorio de vencimiento RTM para tu vehículo ${testPlaca}.`);
+        
+        msg = await notificacionService.enviarMensajePrueba(testTelefono.trim(), mensajeFinal, testCanal);
       }
-      setTestFeedback({ success: true, msg: msg || 'Plantilla de correo despachada exitosamente a tu bandeja.' });
+      setTestFeedback({ success: true, msg: msg || 'Notificación despachada exitosamente al canal seleccionado.' });
+      await loadData();
     } catch (err: any) {
       setTestFeedback({ 
         success: false, 
-        msg: err.response?.data?.message || 'Error al enviar el correo. Verifica las variables en .env.' 
+        msg: err.response?.data?.message || err.message || 'Error al despachar el mensaje. Verifica tus variables en .env.' 
       });
     } finally {
       setIsSendingTest(false);
@@ -106,6 +118,7 @@ export function NotificationsPage() {
   };
 
   const handleReintentar = async (id: string) => {
+
     setReloadingId(id);
     try {
       await notificacionService.reintentar(id);
@@ -197,14 +210,16 @@ export function NotificationsPage() {
           <button
             onClick={() => {
               setTestEmail('wilsonsarrazola@gmail.com');
+              setTestTelefono('+57 311 3476312');
               setTestFeedback(null);
               setIsTestModalOpen(true);
             }}
             className="cda-glass hover:bg-cda-dark-800 text-cda-yellow-400 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 border border-cda-yellow-500/30 transition-all shadow-sm"
           >
-            <Mail className="w-4 h-4 text-cda-yellow-400" />
-            <span>Probar Plantilla de Correo</span>
+            <Send className="w-4 h-4 text-cda-yellow-400" />
+            <span>Probar Envíos (Email / WhatsApp / SMS)</span>
           </button>
+
 
           <button
             onClick={handleBarridoManual}
@@ -233,11 +248,11 @@ export function NotificationsPage() {
             <div className="flex items-center justify-between border-b border-cda-dark-800 pb-3">
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-xl bg-cda-yellow-500/10 text-cda-yellow-400">
-                  <Mail className="w-5 h-5" />
+                  <Send className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Despacho de Correos Transaccionales</h3>
-                  <p className="text-[11px] text-slate-400">Prueba en vivo de las plantillas oficiales de CDA San Pedro</p>
+                  <h3 className="text-sm font-bold text-white">Centro de Pruebas de Notificaciones</h3>
+                  <p className="text-[11px] text-slate-400">Despacho en vivo de correos (SMTP) y SMS Oficiales (Altiria SMS Gateway)</p>
                 </div>
               </div>
               <button
@@ -248,108 +263,163 @@ export function NotificationsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleEnviarTestEmail} className="space-y-4">
+            <form onSubmit={handleEnviarPrueba} className="space-y-4">
+              {/* Selector de Canal */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Tipo de Notificación / Plantilla *</label>
-                <select
-                  value={testTemplate}
-                  onChange={(e) => setTestTemplate(e.target.value)}
-                  className="w-full bg-cda-dark-950 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
-                >
-                  <option value="RECORDATORIO_RTM">🚨 Recordatorio de Vencimiento de Tecnomecánica (RTM)</option>
-                  <option value="COMPROBANTE_PAGO">🧾 Comprobante de Pago & Factura Electrónica DIAN</option>
-                  <option value="CUMPLEANOS">🎂 Felicitación de Cumpleaños & Bono de Fidelización</option>
-                  <option value="INSPECCION_FINALIZADA">✅ Vehículo Aprobado / Inspección Finalizada</option>
-                  <option value="GENERAL">✉️ Mensaje Personalizado Libre</option>
-                </select>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Canal de Envío *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTestCanal('EMAIL')}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border transition-all ${
+                      testCanal === 'EMAIL'
+                        ? 'bg-cda-yellow-500/20 border-cda-yellow-500 text-cda-yellow-400 shadow-sm'
+                        : 'bg-cda-dark-950 border-cda-dark-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Mail className="w-4 h-4" />
+                    <span>Correo (Gmail SMTP)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTestCanal('SMS')}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border transition-all ${
+                      testCanal === 'SMS'
+                        ? 'bg-sky-500/20 border-sky-500 text-sky-400 shadow-sm'
+                        : 'bg-cda-dark-950 border-cda-dark-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>SMS Oficial (Altiria)</span>
+                  </button>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Correo Destinatario *</label>
-                <input
-                  type="email"
-                  required
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  placeholder="ejemplo@gmail.com"
-                  className="w-full bg-cda-dark-950 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cda-yellow-500"
-                />
-              </div>
-
-              {testTemplate !== 'GENERAL' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-cda-dark-950/60 p-3 rounded-xl border border-cda-dark-800">
+              {testCanal === 'EMAIL' ? (
+                <>
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">Nombre Cliente</label>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Tipo de Plantilla *</label>
+                    <select
+                      value={testTemplate}
+                      onChange={(e) => setTestTemplate(e.target.value)}
+                      className="w-full bg-cda-dark-950 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
+                    >
+                      <option value="RECORDATORIO_RTM">🚨 Recordatorio de Vencimiento de Tecnomecánica (RTM)</option>
+                      <option value="COMPROBANTE_PAGO">🧾 Comprobante de Pago & Factura Electrónica DIAN</option>
+                      <option value="CUMPLEANOS">🎂 Felicitación de Cumpleaños & Bono de Fidelización</option>
+                      <option value="INSPECCION_FINALIZADA">✅ Vehículo Aprobado / Inspección Finalizada</option>
+                      <option value="GENERAL">✉️ Mensaje Personalizado Libre</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Correo Destinatario *</label>
                     <input
-                      type="text"
-                      value={testNombre}
-                      onChange={(e) => setTestNombre(e.target.value)}
+                      type="email"
+                      required
+                      value={testEmail}
+                      onChange={(e) => setTestEmail(e.target.value)}
+                      placeholder="ejemplo@gmail.com"
+                      className="w-full bg-cda-dark-950 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cda-yellow-500"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Número Celular Destinatario *</label>
+                  <input
+                    type="text"
+                    required
+                    value={testTelefono}
+                    onChange={(e) => setTestTelefono(e.target.value)}
+                    placeholder="+57 311 3476312"
+                    className="w-full bg-cda-dark-950 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-cda-yellow-500"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Formato internacional automático (ej. 3113476312 o +57 311 3476312).
+                  </p>
+                </div>
+              )}
+
+              {/* Datos de personalización */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-cda-dark-950/60 p-3 rounded-xl border border-cda-dark-800">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Nombre Cliente</label>
+                  <input
+                    type="text"
+                    value={testNombre}
+                    onChange={(e) => setTestNombre(e.target.value)}
+                    className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Placa Vehículo</label>
+                  <input
+                    type="text"
+                    value={testPlaca}
+                    onChange={(e) => setTestPlaca(e.target.value.toUpperCase())}
+                    className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono uppercase focus:outline-none focus:border-cda-yellow-500"
+                  />
+                </div>
+
+                {testCanal === 'EMAIL' && testTemplate === 'RECORDATORIO_RTM' && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">Días Restantes</label>
+                    <input
+                      type="number"
+                      value={testDias}
+                      onChange={(e) => setTestDias(Number(e.target.value))}
                       className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">Placa Vehículo</label>
-                    <input
-                      type="text"
-                      value={testPlaca}
-                      onChange={(e) => setTestPlaca(e.target.value.toUpperCase())}
-                      className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono uppercase focus:outline-none focus:border-cda-yellow-500"
-                    />
-                  </div>
+                )}
 
-                  {testTemplate === 'RECORDATORIO_RTM' && (
+                {testCanal === 'EMAIL' && testTemplate === 'COMPROBANTE_PAGO' && (
+                  <>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Días Restantes</label>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Valor Total Pagado ($ COP)</label>
                       <input
                         type="number"
-                        value={testDias}
-                        onChange={(e) => setTestDias(Number(e.target.value))}
+                        value={testTotal}
+                        onChange={(e) => setTestTotal(Number(e.target.value))}
                         className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
                       />
                     </div>
-                  )}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Método de Pago</label>
+                      <select
+                        value={testMetodo}
+                        onChange={(e) => setTestMetodo(e.target.value)}
+                        className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
+                      >
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Transferencia Bancolombia / Nequi">Transferencia Bancaria</option>
+                        <option value="Tarjeta Débito">Tarjeta Débito</option>
+                        <option value="Tarjeta Crédito">Tarjeta Crédito</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+              </div>
 
-                  {testTemplate === 'COMPROBANTE_PAGO' && (
-                    <>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-400 mb-1">Valor Total Pagado ($ COP)</label>
-                        <input
-                          type="number"
-                          value={testTotal}
-                          onChange={(e) => setTestTotal(Number(e.target.value))}
-                          className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-400 mb-1">Método de Pago</label>
-                        <select
-                          value={testMetodo}
-                          onChange={(e) => setTestMetodo(e.target.value)}
-                          className="w-full bg-cda-dark-900 border border-cda-dark-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cda-yellow-500"
-                        >
-                          <option value="Efectivo">Efectivo</option>
-                          <option value="Transferencia Bancolombia / Nequi">Transferencia Bancaria</option>
-                          <option value="Tarjeta Débito">Tarjeta Débito</option>
-                          <option value="Tarjeta Crédito">Tarjeta Crédito</option>
-                        </select>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
 
-              {testTemplate === 'GENERAL' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Mensaje Libre</label>
-                  <textarea
-                    rows={3}
-                    value={testMessage}
-                    onChange={(e) => setTestMessage(e.target.value)}
-                    placeholder="Escribe el contenido del mensaje..."
-                    className="w-full bg-cda-dark-950 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cda-yellow-500 resize-none"
-                  />
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  {testCanal === 'EMAIL' ? 'Mensaje Adicional / Libre' : 'Texto del Mensaje (SMS / WhatsApp)'}
+                </label>
+                <textarea
+                  rows={3}
+                  value={testMessage}
+                  onChange={(e) => setTestMessage(e.target.value)}
+                  placeholder={
+                    testCanal === 'EMAIL'
+                      ? 'Escribe el contenido del correo...'
+                      : `Hola ${testNombre}! Te recordamos el vencimiento de tu revisión en CDA San Pedro para la placa ${testPlaca}.`
+                  }
+                  className="w-full bg-cda-dark-950 border border-cda-dark-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cda-yellow-500 resize-none"
+                />
+              </div>
 
               {testFeedback && (
                 <div className={`p-3 rounded-xl text-xs ${
@@ -382,7 +452,7 @@ export function NotificationsPage() {
                   ) : (
                     <>
                       <Send className="w-3.5 h-3.5" />
-                      <span>Enviar Plantilla</span>
+                      <span>Enviar Prueba {testCanal}</span>
                     </>
                   )}
                 </button>
@@ -391,6 +461,7 @@ export function NotificationsPage() {
           </div>
         </div>
       )}
+
 
       {/* Metric Counters */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

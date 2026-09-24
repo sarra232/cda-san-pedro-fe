@@ -1,6 +1,8 @@
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { LogOut, Shield, Menu, X } from 'lucide-react';
 import logoCDA from '../../assets/LogoCDA.PNG';
+
 
 interface Props {
   onToggleSidebar?: () => void;
@@ -44,12 +46,16 @@ export function Navbar({ onToggleSidebar, isSidebarOpen }: Props) {
       {/* User Information & Actions */}
       <div className="flex items-center space-x-2 sm:space-x-3">
         {user && (
-          <div className="flex items-center space-x-2 sm:space-x-2.5 bg-cda-dark-800/80 px-2.5 py-1.5 rounded-xl border border-cda-dark-700">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-cda-yellow-500/10 border border-cda-yellow-500/30 flex items-center justify-center text-cda-yellow-400 font-bold text-xs">
-              {user.nombresApellidos.charAt(0)}
+          <Link
+            to="/perfil"
+            title="Ver y editar Mi Perfil"
+            className="flex items-center space-x-2 sm:space-x-2.5 bg-cda-dark-800/80 hover:bg-cda-dark-700/80 px-2.5 py-1.5 rounded-xl border border-cda-dark-700 hover:border-cda-yellow-500/40 transition-all cursor-pointer group"
+          >
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-cda-yellow-500/10 border border-cda-yellow-500/30 group-hover:border-cda-yellow-500 flex items-center justify-center text-cda-yellow-400 font-bold text-xs transition-colors uppercase">
+              {user.nombresApellidos.charAt(0).toUpperCase()}
             </div>
             <div className="text-left hidden lg:block">
-              <p className="text-xs font-semibold text-white leading-tight truncate max-w-[130px]">
+              <p className="text-xs font-semibold text-white group-hover:text-cda-yellow-400 leading-tight truncate max-w-[130px] transition-colors uppercase">
                 {user.nombresApellidos}
               </p>
               <div className="flex items-center gap-1 mt-0.5">
@@ -62,8 +68,9 @@ export function Navbar({ onToggleSidebar, isSidebarOpen }: Props) {
             <span className="lg:hidden text-[10px] font-extrabold text-cda-yellow-400 uppercase tracking-wider px-1">
               {user.rol === 'ADMINISTRADOR' ? 'ADMIN' : user.rol === 'TECNICO_PISTA' ? 'TÉCNICO' : user.rol === 'CAJERO' ? 'CAJERO' : 'RECEP'}
             </span>
-          </div>
+          </Link>
         )}
+
 
         <button
           onClick={logout}

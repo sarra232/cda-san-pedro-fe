@@ -23,7 +23,13 @@ export const notificacionService = {
     return res.data.message || 'Correo de prueba despachado';
   },
 
+  async enviarMensajePrueba(telefono: string, mensaje?: string, canal: 'SMS' | 'WHATSAPP' = 'WHATSAPP'): Promise<string> {
+    const res = await api.post<ApiResponse<string>>('/notificaciones/test-mensaje', { telefono, mensaje, canal });
+    return res.data.message || `Mensaje de prueba vía ${canal} despachado`;
+  },
+
   async enviarPlantillaReal(payload: {
+
     tipoPlantilla: string;
     destinatario: string;
     nombreCliente?: string;

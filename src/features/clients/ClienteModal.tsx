@@ -27,20 +27,30 @@ export function ClienteModal({ isOpen, onClose, onSuccess, initialData }: Props)
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const wasOpenRef = React.useRef(false);
+  const lastDocRef = React.useRef<string | null>(null);
+
   useEffect(() => {
     if (isOpen) {
-      setFormData({
-        tipoDocumento: (initialData?.tipoDocumento as TipoDocumento) || 'CC',
-        numeroDocumento: initialData?.numeroDocumento || '',
-        nombresRazonSocial: initialData?.nombresRazonSocial || '',
-        direccion: initialData?.direccion || '',
-        celular: initialData?.celular ? handlePhoneInput(initialData.celular) : '',
-        email: initialData?.email || '',
-        fechaNacimiento: initialData?.fechaNacimiento || '',
-      });
-      setError(null);
+      if (!wasOpenRef.current || (initialData?.numeroDocumento && lastDocRef.current !== initialData.numeroDocumento)) {
+        wasOpenRef.current = true;
+        lastDocRef.current = initialData?.numeroDocumento || null;
+        setFormData({
+          tipoDocumento: (initialData?.tipoDocumento as TipoDocumento) || 'CC',
+          numeroDocumento: initialData?.numeroDocumento || '',
+          nombresRazonSocial: initialData?.nombresRazonSocial || '',
+          direccion: initialData?.direccion || '',
+          celular: initialData?.celular ? handlePhoneInput(initialData.celular) : '',
+          email: initialData?.email || '',
+          fechaNacimiento: initialData?.fechaNacimiento || '',
+        });
+        setError(null);
+      }
+    } else {
+      wasOpenRef.current = false;
+      lastDocRef.current = null;
     }
-  }, [isOpen, initialData]);
+  }, [isOpen, initialData?.numeroDocumento]);
 
   if (!isOpen) return null;
 
@@ -61,7 +71,10 @@ export function ClienteModal({ isOpen, onClose, onSuccess, initialData }: Props)
     setIsLoading(true);
 
     try {
-      const saved = await clienteService.saveCliente(formData);
+      const saved = await clienteService.saveCliente({
+        ...formData,
+        nombresRazonSocial: formData.nombresRazonSocial.trim().toUpperCase(),
+      });
       setIsLoading(false);
       onSuccess(saved);
       onClose();
@@ -141,9 +154,9 @@ export function ClienteModal({ isOpen, onClose, onSuccess, initialData }: Props)
             <input
               type="text"
               value={formData.nombresRazonSocial}
-              onChange={(e) => setFormData({ ...formData, nombresRazonSocial: e.target.value })}
-              placeholder="Ej. Carlos Arturo Ramírez"
-              className="w-full bg-cda-dark-900 border border-cda-dark-700 text-white text-xs rounded-xl px-3.5 py-2.5 focus:border-cda-yellow-500 focus:outline-none"
+              onChange={(e) => setFormData({ ...formData, nombresRazonSocial: e.target.value.toUpperCase() })}
+              placeholder="Ej. CARLOS ARTURO RAMÍREZ"
+              className="w-full bg-cda-dark-900 border border-cda-dark-700 text-white text-xs rounded-xl px-3.5 py-2.5 uppercase focus:border-cda-yellow-500 focus:outline-none"
               required
             />
           </div>

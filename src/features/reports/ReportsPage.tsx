@@ -6,12 +6,16 @@ import {
   DollarSign, 
   Car, 
   Receipt, 
-  CreditCard, 
   Bike, 
   Truck, 
   Bus, 
   ExternalLink,
-  Search
+  Search,
+  PieChart as PieIcon,
+  ShieldCheck,
+  Building2,
+  TrendingUp,
+  Percent
 } from 'lucide-react';
 import { reporteService, ReporteVentas } from '../../services/reporteService';
 import { facturaService } from '../../services/facturaService';
@@ -26,7 +30,9 @@ export function ReportsPage() {
   const [fechaFin, setFechaFin] = useState(today);
   const [reporte, setReporte] = useState<ReporteVentas | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
+  const [activeTab, setActiveTab] = useState<'FACTURAS' | 'LIQUIDACION'>('FACTURAS');
   const [searchFilter, setSearchFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -64,14 +70,25 @@ export function ReportsPage() {
     setFechaFin(nowStr);
   };
 
+  const handleExportExcel = async () => {
+    setIsExportingExcel(true);
+    try {
+      await reporteService.downloadExcel(fechaInicio, fechaFin);
+    } catch {
+      // Ignorar
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
   const handleExportCsv = async () => {
-    setIsExporting(true);
+    setIsExportingCsv(true);
     try {
       await reporteService.downloadCsv(fechaInicio, fechaFin);
     } catch {
       // Ignorar
     } finally {
-      setIsExporting(false);
+      setIsExportingCsv(false);
     }
   };
 
@@ -80,9 +97,9 @@ export function ReportsPage() {
     if (!q) return true;
     return (
       f.numeroFactura.toLowerCase().includes(q) ||
-      f.ordenIngreso?.vehiculo?.placa.toLowerCase().includes(q) ||
-      f.clienteFactura?.nombresRazonSocial.toLowerCase().includes(q) ||
-      f.clienteFactura?.numeroDocumento.includes(q)
+      f.ordenIngreso?.vehiculo?.placa?.toLowerCase().includes(q) ||
+      f.clienteFactura?.nombresRazonSocial?.toLowerCase().includes(q) ||
+      f.clienteFactura?.numeroDocumento?.includes(q)
     );
   }) || [];
 
@@ -100,25 +117,39 @@ export function ReportsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-            <span>Reportes Analíticos y Filtros por Fechas</span>
+          <h1 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2 flex-wrap">
+            <span>Reporte Financiero & Liquidación RTM</span>
             <span className="text-xs font-extrabold text-cda-yellow-400 bg-cda-yellow-400/10 px-2.5 py-0.5 rounded-full border border-cda-yellow-400/20">
-              Gerencial
+              Gerencial / Contable
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Consolidado financiero, afluencia vehicular por categoría y exportación a Excel
+            Desglose de recaudo bruto, dispersión obligatoria a terceros (RUNT/SICOV/ANSV), IVA y utilidad neta real del CDA.
           </p>
         </div>
 
-        <button
-          onClick={handleExportCsv}
-          disabled={isExporting}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold px-4 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all"
-        >
-          <Download className="w-4 h-4" />
-          <span>{isExporting ? 'Generando Excel...' : 'Exportar a Excel (CSV)'}</span>
-        </button>
+        {/* Export Buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleExportExcel}
+            disabled={isExportingExcel}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold px-4 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+            title="Descargar libro Excel .xlsx multi-hoja con estilos y fórmulas"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-white" />
+            <span>{isExportingExcel ? 'Generando Excel...' : 'Exportar a Excel (.xlsx)'}</span>
+          </button>
+
+          <button
+            onClick={handleExportCsv}
+            disabled={isExportingCsv}
+            className="bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 font-semibold px-3 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-cda-dark-700 transition-all"
+            title="Exportar en formato CSV simple"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-400" />
+            <span>CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* Date Range Selector Box */}
@@ -182,7 +213,7 @@ export function ReportsPage() {
           <button
             onClick={loadReporte}
             disabled={isLoading}
-            className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-5 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 transition-all"
+            className="bg-cda-yellow-500 hover:bg-cda-yellow-400 text-black font-extrabold px-5 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>{isLoading ? 'Consultando...' : 'Aplicar Filtro'}</span>
@@ -190,256 +221,406 @@ export function ReportsPage() {
         </div>
       </div>
 
-      {/* Summary KPI Cards for the Selected Range */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* 4 Executive KPI Cards (Total Recaudado, Terceros, IVA, y GANANCIA NETA CDA) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Recaudo Total */}
         <div className="cda-glass rounded-2xl p-5 border border-cda-dark-700/80">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Total Recaudado en Periodo</span>
+            <span className="text-xs font-semibold text-slate-400">Recaudo Bruto en Caja</span>
             <div className="p-2 rounded-xl bg-cda-yellow-500/10 text-cda-yellow-400">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
           <h3 className="text-2xl font-black text-white mt-2">
-            {formatCOP(reporte?.totalRecaudado)}
+            {formatCOP(reporte?.totalRecaudado || 0)}
           </h3>
-          <p className="text-[11px] text-slate-400 mt-1">Con IVA 19% discriminado</p>
+          <p className="text-[11px] text-slate-400 mt-1">100% total pagado por clientes</p>
         </div>
 
-        <div className="cda-glass rounded-2xl p-5 border border-cda-dark-700/80">
+        {/* Dispersión a Terceros */}
+        <div className="cda-glass rounded-2xl p-5 border border-rose-500/30 bg-gradient-to-b from-rose-950/20 to-transparent">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Vehículos Atendidos</span>
+            <span className="text-xs font-semibold text-rose-300">Dispersión Terceros</span>
+            <div className="p-2 rounded-xl bg-rose-500/10 text-rose-400">
+              <Building2 className="w-4 h-4" />
+            </div>
+          </div>
+          <h3 className="text-2xl font-black text-rose-300 mt-2">
+            {formatCOP(reporte?.totalTerceros || 0)}
+          </h3>
+          <p className="text-[11px] text-rose-200/70 mt-1">RUNT, SICOV, ANSV y Operador</p>
+        </div>
+
+        {/* IVA 19% */}
+        <div className="cda-glass rounded-2xl p-5 border border-blue-500/30 bg-gradient-to-b from-blue-950/20 to-transparent">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-blue-300">Impuesto a las Ventas (IVA)</span>
             <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400">
-              <Car className="w-4 h-4" />
+              <Percent className="w-4 h-4" />
             </div>
           </div>
-          <h3 className="text-2xl font-black text-white mt-2">
-            {reporte?.totalVehiculos || 0}
+          <h3 className="text-2xl font-black text-blue-300 mt-2">
+            {formatCOP(reporte?.totalIva || 0)}
           </h3>
-          <p className="text-[11px] text-slate-400 mt-1">Inspecciones RTM completadas</p>
+          <p className="text-[11px] text-blue-200/70 mt-1">19% de la tarifa base gravable</p>
         </div>
 
-        <div className="cda-glass rounded-2xl p-5 border border-cda-dark-700/80">
+        {/* GANANCIA NETA CDA */}
+        <div className="cda-glass rounded-2xl p-5 border border-cda-yellow-500/50 bg-gradient-to-b from-amber-950/40 to-cda-dark-900 shadow-xl relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400">Facturas Emitidas</span>
-            <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
-              <Receipt className="w-4 h-4" />
+            <span className="text-xs font-bold text-cda-yellow-400 uppercase tracking-wider">
+              Ganancia Neta CDA
+            </span>
+            <div className="p-2 rounded-xl bg-cda-yellow-500/20 text-cda-yellow-400">
+              <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <h3 className="text-2xl font-black text-white mt-2">
-            {reporte?.totalFacturas || 0}
+          <h3 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cda-yellow-400 via-amber-300 to-yellow-200 mt-2">
+            {formatCOP(reporte?.totalGananciaCda || 0)}
           </h3>
-          <p className="text-[11px] text-slate-400 mt-1">100% con título valor DIAN</p>
+          <p className="text-[11px] text-emerald-400 font-bold mt-1 flex items-center gap-1">
+            <span>{reporte?.margenCdaPorcentaje || 0}% de Margen Neto</span>
+            <span className="text-slate-400 font-normal">({reporte?.totalVehiculos || 0} vehículos)</span>
+          </p>
         </div>
       </div>
 
-      {/* Breakdown Grids: Categories & Payment Methods */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Vehicles by Category */}
-        <div className="cda-glass rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-cda-dark-700/80 space-y-4">
-          <h2 className="text-sm font-bold text-white flex items-center gap-2">
-            <Car className="w-4 h-4 text-cda-yellow-400" />
-            <span>Afluencia por Categoría Vehicular en el Rango</span>
-          </h2>
+      {/* Tabs Navigation */}
+      <div className="flex items-center gap-2 border-b border-cda-dark-800 pb-3">
+        <button
+          onClick={() => setActiveTab('FACTURAS')}
+          className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'FACTURAS'
+              ? 'bg-cda-yellow-500 text-black shadow-lg shadow-cda-yellow-500/20'
+              : 'bg-cda-dark-900 text-slate-400 hover:text-white border border-cda-dark-700'
+          }`}
+        >
+          <Receipt className="w-4 h-4" />
+          <span>1. Desglose Factura por Factura ({filteredFacturas.length})</span>
+        </button>
 
-          <div className="grid grid-cols-2 gap-3">
-            {['MOTO', 'LIVIANO', 'PESADO', 'PUBLICO'].map((cat) => {
-              const count = reporte?.vehiculosPorCategoria[cat] || 0;
-              return (
-                <div key={cat} className="p-3.5 rounded-2xl bg-cda-dark-900/80 border border-cda-dark-800 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-xl bg-cda-dark-950">
-                      {getCategoryIcon(cat)}
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-white block">{cat}</span>
-                      <span className="text-[10px] text-slate-400">Categoría</span>
-                    </div>
-                  </div>
-                  <span className="text-xl font-black text-cda-yellow-400">{count}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Incomes by Payment Method */}
-        <div className="cda-glass rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-cda-dark-700/80 space-y-4">
-          <h2 className="text-sm font-bold text-white flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-cda-yellow-400" />
-            <span>Ingresos por Medio de Pago en el Rango</span>
-          </h2>
-
-          <div className="grid grid-cols-2 gap-3">
-            {['EFECTIVO', 'TRANSFERENCIA', 'DATAFONO_TARJETA', 'SISTECREDITO'].map((met) => {
-              const amount = reporte?.ingresosPorMetodoPago[met] || 0;
-              return (
-                <div key={met} className="p-3.5 rounded-2xl bg-cda-dark-900/80 border border-cda-dark-800 space-y-1">
-                  <span className="text-[11px] font-bold text-slate-400 block truncate">{met}</span>
-                  <span className="text-base font-black text-white block font-mono">{formatCOP(amount)}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <button
+          onClick={() => setActiveTab('LIQUIDACION')}
+          className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'LIQUIDACION'
+              ? 'bg-cda-yellow-500 text-black shadow-lg shadow-cda-yellow-500/20'
+              : 'bg-cda-dark-900 text-slate-400 hover:text-white border border-cda-dark-700'
+          }`}
+        >
+          <PieIcon className="w-4 h-4" />
+          <span>2. Liquidación y Rentabilidad por Categoría</span>
+        </button>
       </div>
 
-      {/* Invoices Detailed Table / Mobile Cards */}
-      <div className="space-y-4 pt-4 border-t border-cda-dark-800">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <span>Detalle de Facturas en el Periodo</span>
-              <span className="text-xs font-bold text-cda-yellow-400 bg-cda-yellow-400/10 px-2.5 py-0.5 rounded-full border border-cda-yellow-400/20">
-                {filteredFacturas.length}
-              </span>
-            </h2>
-            <p className="text-xs text-slate-400">Listado detallado de comprobantes emitidos en las fechas seleccionadas</p>
-          </div>
-
-          <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
-            <input
-              type="text"
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              placeholder="Buscar en el reporte..."
-              className="w-full bg-cda-dark-900 border border-cda-dark-700 text-white placeholder-slate-500 text-xs rounded-xl pl-9 pr-3 py-2.5 focus:border-cda-yellow-500 focus:outline-none"
-            />
-          </div>
-        </div>
-
-        {/* MOBILE CARDS VIEW (< md) */}
-        <div className="grid grid-cols-1 gap-3 md:hidden">
-          {filteredFacturas.length === 0 ? (
-            <div className="cda-glass rounded-2xl p-6 text-center text-slate-500 text-xs">
-              No se encontraron facturas en el periodo seleccionado.
+      {/* TAB 1: DESGLOSE FACTURA POR FACTURA */}
+      {activeTab === 'FACTURAS' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <span>Detalle de Facturación con Dispersión RTM</span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Visualiza el desglose exacto de lo recaudado, el valor pagado a entidades de tránsito y lo que le queda al CDA.
+              </p>
             </div>
-          ) : (
-            filteredFacturas
-              .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-              .map((f) => (
-                <div key={f.id} className="cda-glass rounded-2xl p-4 border border-cda-dark-700/80 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-cda-yellow-400 font-mono text-sm">{f.numeroFactura}</span>
-                    <span className="font-mono font-black text-white text-base">{formatCOP(f.total)}</span>
-                  </div>
 
-                  <div className="text-xs space-y-1">
-                    <p className="text-white font-semibold">{f.clienteFactura?.nombresRazonSocial}</p>
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                      <span>Placa: <strong className="text-slate-200 font-mono">{formatPlaca(f.ordenIngreso?.vehiculo?.placa)}</strong></span>
-                      <span>•</span>
-                      <span>{f.metodoPago}</span>
+            <div className="relative w-full sm:w-80">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                placeholder="Buscar por placa, cliente o factura..."
+                className="w-full bg-cda-dark-900 border border-cda-dark-700 text-white placeholder-slate-500 text-xs rounded-xl pl-9 pr-3 py-2.5 focus:border-cda-yellow-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* MOBILE CARDS VIEW (< md) */}
+          <div className="grid grid-cols-1 gap-3 md:hidden">
+            {filteredFacturas.length === 0 ? (
+              <div className="cda-glass rounded-2xl p-6 text-center text-slate-500 text-xs">
+                No se encontraron facturas en el periodo seleccionado.
+              </div>
+            ) : (
+              filteredFacturas
+                .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                .map((f) => (
+                  <div key={f.id} className="cda-glass rounded-2xl p-4 border border-cda-dark-700/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-cda-yellow-400 font-mono text-sm">{f.numeroFactura}</span>
+                      <span className="font-mono font-black text-white text-base">{formatCOP(f.total)}</span>
+                    </div>
+
+                    <div className="text-xs space-y-1">
+                      <p className="text-white font-semibold">{f.clienteFactura?.nombresRazonSocial}</p>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                        <span>Placa: <strong className="text-slate-200 font-mono">{formatPlaca(f.ordenIngreso?.vehiculo?.placa)}</strong></span>
+                        <span>•</span>
+                        <span>{f.metodoPago}</span>
+                      </div>
+                    </div>
+
+                    {/* Desglose Móvil */}
+                    <div className="grid grid-cols-3 gap-2 bg-cda-dark-950 p-2.5 rounded-xl border border-cda-dark-800 text-center">
+                      <div>
+                        <span className="text-[9px] text-slate-400 block uppercase">Terceros</span>
+                        <span className="text-[11px] font-bold text-rose-400">{formatCOP(f.totalTerceros || 0)}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-slate-400 block uppercase">IVA</span>
+                        <span className="text-[11px] font-bold text-blue-400">{formatCOP(f.iva || 0)}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-cda-yellow-400 block uppercase font-bold">CDA</span>
+                        <span className="text-[11px] font-black text-cda-yellow-400">{formatCOP(f.valorServicioCda || 0)}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-cda-dark-800">
+                      <span className="text-[10px] text-slate-500">
+                        {f.fechaEmision ? new Date(f.fechaEmision).toLocaleDateString() : ''}
+                      </span>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => facturaService.downloadPdf(f.id, f.numeroFactura)}
+                          className="bg-cda-dark-800 hover:bg-cda-dark-700 text-cda-yellow-400 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 border border-cda-dark-700"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>PDF</span>
+                        </button>
+                        <button
+                          onClick={() => facturaService.viewPdfInTab(f.id)}
+                          className="bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 font-semibold px-2.5 py-1.5 rounded-lg text-xs border border-cda-dark-700"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
+                ))
+            )}
+          </div>
 
-                  <div className="flex items-center justify-between pt-2 border-t border-cda-dark-800">
-                    <span className="text-[10px] text-slate-500">
-                      {f.fechaEmision ? new Date(f.fechaEmision).toLocaleDateString() : ''}
-                    </span>
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => facturaService.downloadPdf(f.id, f.numeroFactura)}
-                        className="bg-cda-dark-800 hover:bg-cda-dark-700 text-cda-yellow-400 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 border border-cda-dark-700"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>PDF</span>
-                      </button>
-                      <button
-                        onClick={() => facturaService.viewPdfInTab(f.id)}
-                        className="bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 font-semibold px-2.5 py-1.5 rounded-lg text-xs border border-cda-dark-700"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))
-          )}
-        </div>
-
-        {/* DESKTOP TABLE VIEW (>= md) */}
-        <div className="hidden md:block cda-glass rounded-2xl border border-cda-dark-700/80 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="text-slate-400 bg-cda-dark-900/80 border-b border-cda-dark-800">
-                <tr>
-                  <th className="p-4 font-semibold">No. Factura</th>
-                  <th className="p-4 font-semibold">Fecha Emisión</th>
-                  <th className="p-4 font-semibold">Cliente / Pagador</th>
-                  <th className="p-4 font-semibold">Placa Vehículo</th>
-                  <th className="p-4 font-semibold">Método Pago</th>
-                  <th className="p-4 font-semibold">Subtotal</th>
-                  <th className="p-4 font-semibold">IVA (19%)</th>
-                  <th className="p-4 font-semibold">Total Pagado</th>
-                  <th className="p-4 font-semibold text-right">PDF</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-cda-dark-800 text-slate-200">
-                {filteredFacturas.length === 0 ? (
+          {/* DESKTOP TABLE VIEW (>= md) */}
+          <div className="hidden md:block cda-glass rounded-2xl border border-cda-dark-700/80 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="text-slate-400 bg-cda-dark-900/80 border-b border-cda-dark-800">
                   <tr>
-                    <td colSpan={9} className="p-8 text-center text-slate-500">
-                      No se encontraron facturas en el periodo seleccionado.
+                    <th className="p-3.5 font-semibold">No. Factura</th>
+                    <th className="p-3.5 font-semibold">Fecha</th>
+                    <th className="p-3.5 font-semibold">Placa / Cat</th>
+                    <th className="p-3.5 font-semibold">Cliente</th>
+                    <th className="p-3.5 font-semibold text-right">Recaudo Total</th>
+                    <th className="p-3.5 font-semibold text-right text-rose-400">RUNT</th>
+                    <th className="p-3.5 font-semibold text-right text-rose-400">SICOV</th>
+                    <th className="p-3.5 font-semibold text-right text-rose-400">ANSV</th>
+                    <th className="p-3.5 font-semibold text-right text-rose-300">Total Terceros</th>
+                    <th className="p-3.5 font-semibold text-right text-blue-400">IVA 19%</th>
+                    <th className="p-3.5 font-semibold text-right text-cda-yellow-400">Ganancia CDA</th>
+                    <th className="p-3.5 font-semibold text-right">PDF</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-cda-dark-800 text-slate-200">
+                  {filteredFacturas.length === 0 ? (
+                    <tr>
+                      <td colSpan={12} className="p-8 text-center text-slate-500">
+                        No se encontraron facturas en el periodo seleccionado.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredFacturas
+                      .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                      .map((f) => (
+                        <tr key={f.id} className="hover:bg-cda-dark-800/40 transition-colors">
+                          <td className="p-3.5">
+                            <span className="font-mono font-bold text-cda-yellow-400">{f.numeroFactura}</span>
+                          </td>
+                          <td className="p-3.5 text-slate-300">
+                            {f.fechaEmision ? new Date(f.fechaEmision).toLocaleDateString() : ''}
+                          </td>
+                          <td className="p-3.5">
+                            <span className="font-mono font-bold text-white bg-cda-dark-900 px-1.5 py-0.5 rounded border border-cda-dark-700">
+                              {formatPlaca(f.ordenIngreso?.vehiculo?.placa)}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block mt-0.5">{f.ordenIngreso?.vehiculo?.categoria}</span>
+                          </td>
+                          <td className="p-3.5 max-w-[150px] truncate">
+                            <p className="font-semibold text-white truncate">{f.clienteFactura?.nombresRazonSocial}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">{formatDocumento(f.clienteFactura?.numeroDocumento)}</p>
+                          </td>
+                          <td className="p-3.5 text-right font-mono font-bold text-white">{formatCOP(f.total)}</td>
+                          <td className="p-3.5 text-right font-mono text-rose-300/80">{formatCOP(f.runt || 0)}</td>
+                          <td className="p-3.5 text-right font-mono text-rose-300/80">{formatCOP(f.sicov || 0)}</td>
+                          <td className="p-3.5 text-right font-mono text-rose-300/80">{formatCOP(f.seguridadVial || 0)}</td>
+                          <td className="p-3.5 text-right font-mono font-semibold text-rose-400">{formatCOP(f.totalTerceros || 0)}</td>
+                          <td className="p-3.5 text-right font-mono text-blue-300">{formatCOP(f.iva || 0)}</td>
+                          <td className="p-3.5 text-right font-mono font-black text-cda-yellow-400 bg-cda-yellow-500/5">
+                            {formatCOP(f.valorServicioCda || 0)}
+                          </td>
+                          <td className="p-3.5 text-right space-x-1">
+                            <button
+                              onClick={() => facturaService.downloadPdf(f.id, f.numeroFactura)}
+                              className="p-1.5 rounded-lg bg-cda-yellow-500/15 hover:bg-cda-yellow-500 hover:text-black text-cda-yellow-400 border border-cda-yellow-500/30 transition-all inline-flex"
+                              title="Descargar PDF"
+                            >
+                              <Download className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => facturaService.viewPdfInTab(f.id)}
+                              className="p-1.5 rounded-lg bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 border border-cda-dark-700 transition-all inline-flex"
+                              title="Ver en pestaña"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Pagination */}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={Math.ceil(filteredFacturas.length / itemsPerPage) || 1}
+            totalItems={filteredFacturas.length}
+            itemsPerPage={itemsPerPage}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        </div>
+      )}
+
+      {/* TAB 2: LIQUIDACIÓN Y RENTABILIDAD POR CATEGORÍA */}
+      {activeTab === 'LIQUIDACION' && (
+        <div className="space-y-6">
+          {/* Executive Summary Table */}
+          <div className="cda-glass rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-cda-dark-700/80 space-y-4">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-cda-yellow-400" />
+              <span>Consolidado de Liquidación y Retenciones Financieras</span>
+            </h2>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-cda-dark-900 text-slate-400 border-b border-cda-dark-800">
+                  <tr>
+                    <th className="p-3 font-semibold">Concepto Financiero</th>
+                    <th className="p-3 font-semibold text-right">Valor Total ($ COP)</th>
+                    <th className="p-3 font-semibold text-right">% Participación</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-cda-dark-800">
+                  <tr className="bg-cda-dark-950 font-bold text-white">
+                    <td className="p-3.5">(+) RECAUDO BRUTO TOTAL EN CAJA / BANCOS</td>
+                    <td className="p-3.5 text-right font-mono text-sm text-white">{formatCOP(reporte?.totalRecaudado || 0)}</td>
+                    <td className="p-3.5 text-right font-mono text-slate-400">100.0%</td>
+                  </tr>
+                  <tr className="text-rose-300">
+                    <td className="p-3 font-semibold">(-) TOTAL DISPERSIÓN A TERCEROS</td>
+                    <td className="p-3 text-right font-mono font-semibold">{formatCOP(reporte?.totalTerceros || 0)}</td>
+                    <td className="p-3 text-right font-mono text-slate-400">
+                      {reporte?.totalRecaudado ? ((reporte.totalTerceros / reporte.totalRecaudado) * 100).toFixed(1) : 0}%
                     </td>
                   </tr>
-                ) : (
-                  filteredFacturas
-                    .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-                    .map((f) => (
-                      <tr key={f.id} className="hover:bg-cda-dark-800/40 transition-colors">
-                        <td className="p-4">
-                          <span className="font-mono font-bold text-cda-yellow-400">{f.numeroFactura}</span>
+                  <tr className="text-slate-400 text-[11px]">
+                    <td className="p-2.5 pl-8">• Retención Tasas RUNT</td>
+                    <td className="p-2.5 text-right font-mono">{formatCOP(reporte?.totalRunt || 0)}</td>
+                    <td className="p-2.5 text-right font-mono">-</td>
+                  </tr>
+                  <tr className="text-slate-400 text-[11px]">
+                    <td className="p-2.5 pl-8">• Retención Pines SICOV (Vigia / Indra)</td>
+                    <td className="p-2.5 text-right font-mono">{formatCOP(reporte?.totalSicov || 0)}</td>
+                    <td className="p-2.5 text-right font-mono">-</td>
+                  </tr>
+                  <tr className="text-slate-400 text-[11px]">
+                    <td className="p-2.5 pl-8">• Retención Fondo ANSV (Seguridad Vial)</td>
+                    <td className="p-2.5 text-right font-mono">{formatCOP(reporte?.totalSeguridadVial || 0)}</td>
+                    <td className="p-2.5 text-right font-mono">-</td>
+                  </tr>
+                  <tr className="text-slate-400 text-[11px]">
+                    <td className="p-2.5 pl-8">• Operador Financiero, Bancario y Pólizas</td>
+                    <td className="p-2.5 text-right font-mono">{formatCOP(reporte?.totalOperadorYOtros || 0)}</td>
+                    <td className="p-2.5 text-right font-mono">-</td>
+                  </tr>
+                  <tr className="text-blue-300">
+                    <td className="p-3 font-semibold">(-) IMPUESTO A LAS VENTAS (IVA 19%)</td>
+                    <td className="p-3 text-right font-mono font-semibold">{formatCOP(reporte?.totalIva || 0)}</td>
+                    <td className="p-3 text-right font-mono text-slate-400">
+                      {reporte?.totalRecaudado ? ((reporte.totalIva / reporte.totalRecaudado) * 100).toFixed(1) : 0}%
+                    </td>
+                  </tr>
+                  <tr className="bg-amber-500/10 font-black text-cda-yellow-400 border-t-2 border-cda-yellow-500">
+                    <td className="p-4 text-sm">(=) GANANCIA NETA REAL GENERADA POR EL CDA</td>
+                    <td className="p-4 text-right font-mono text-lg text-cda-yellow-400">
+                      {formatCOP(reporte?.totalGananciaCda || 0)}
+                    </td>
+                    <td className="p-4 text-right font-mono text-emerald-400 font-extrabold text-sm">
+                      {reporte?.margenCdaPorcentaje || 0}%
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Rentability by Category */}
+          <div className="cda-glass rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-cda-dark-700/80 space-y-4">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <Car className="w-4 h-4 text-cda-yellow-400" />
+              <span>Rentabilidad por Categoría de Vehículo</span>
+            </h2>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-cda-dark-900 text-slate-400 border-b border-cda-dark-800">
+                  <tr>
+                    <th className="p-3.5 font-semibold">Categoría</th>
+                    <th className="p-3.5 font-semibold text-center">Inspecciones</th>
+                    <th className="p-3.5 font-semibold text-right">Recaudo Total</th>
+                    <th className="p-3.5 font-semibold text-right text-rose-400">Dispersión Terceros</th>
+                    <th className="p-3.5 font-semibold text-right text-cda-yellow-400">Ganancia Neta CDA</th>
+                    <th className="p-3.5 font-semibold text-center text-emerald-400">Margen %</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-cda-dark-800">
+                  {['MOTO', 'LIVIANO', 'PESADO', 'PUBLICO'].map((cat) => {
+                    const qty = reporte?.vehiculosPorCategoria[cat] || 0;
+                    const rec = reporte?.recaudoPorCategoria?.[cat] || 0;
+                    const ter = reporte?.tercerosPorCategoria?.[cat] || 0;
+                    const gan = reporte?.gananciaPorCategoria?.[cat] || 0;
+                    const pct = rec > 0 ? ((gan / rec) * 100).toFixed(1) : '0.0';
+
+                    return (
+                      <tr key={cat} className="hover:bg-cda-dark-800/40 transition-colors">
+                        <td className="p-3.5 flex items-center gap-2 font-bold text-white">
+                          {getCategoryIcon(cat)}
+                          <span>Vehículos {cat}</span>
                         </td>
-                        <td className="p-4 text-slate-300">
-                          {f.fechaEmision ? new Date(f.fechaEmision).toLocaleDateString() : ''}
+                        <td className="p-3.5 text-center font-bold text-slate-300">{qty}</td>
+                        <td className="p-3.5 text-right font-mono">{formatCOP(rec)}</td>
+                        <td className="p-3.5 text-right font-mono text-rose-300">{formatCOP(ter)}</td>
+                        <td className="p-3.5 text-right font-mono font-bold text-cda-yellow-400 bg-cda-yellow-500/5">
+                          {formatCOP(gan)}
                         </td>
-                        <td className="p-4">
-                          <p className="font-bold text-white">{f.clienteFactura?.nombresRazonSocial}</p>
-                          <p className="text-[11px] text-slate-400">{f.clienteFactura?.tipoDocumento} {formatDocumento(f.clienteFactura?.numeroDocumento)}</p>
-                        </td>
-                        <td className="p-4">
-                          <span className="font-mono font-bold text-white bg-cda-dark-900 px-2 py-0.5 rounded border border-cda-dark-700">
-                            {formatPlaca(f.ordenIngreso?.vehiculo?.placa)}
-                          </span>
-                        </td>
-                        <td className="p-4 text-slate-300">{f.metodoPago}</td>
-                        <td className="p-4 font-mono">{formatCOP(f.subtotal)}</td>
-                        <td className="p-4 font-mono text-slate-400">{formatCOP(f.iva)}</td>
-                        <td className="p-4 font-mono font-bold text-cda-yellow-400">{formatCOP(f.total)}</td>
-                        <td className="p-4 text-right space-x-1.5">
-                          <button
-                            onClick={() => facturaService.downloadPdf(f.id, f.numeroFactura)}
-                            className="p-1.5 rounded-lg bg-cda-yellow-500/15 hover:bg-cda-yellow-500 hover:text-black text-cda-yellow-400 border border-cda-yellow-500/30 transition-all inline-flex"
-                            title="Descargar PDF"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => facturaService.viewPdfInTab(f.id)}
-                            className="p-1.5 rounded-lg bg-cda-dark-800 hover:bg-cda-dark-700 text-slate-300 border border-cda-dark-700 transition-all inline-flex"
-                            title="Ver en pestaña"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </button>
+                        <td className="p-3.5 text-center font-mono font-bold text-emerald-400">
+                          {pct}%
                         </td>
                       </tr>
-                    ))
-                )}
-              </tbody>
-            </table>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-
-        {/* Pagination */}
-        <Pagination
-          currentPage={currentPage}
-          totalPages={Math.ceil(filteredFacturas.length / itemsPerPage) || 1}
-          totalItems={filteredFacturas.length}
-          itemsPerPage={itemsPerPage}
-          onPageChange={setCurrentPage}
-          onItemsPerPageChange={setItemsPerPage}
-        />
-      </div>
+      )}
     </div>
   );
 }
+

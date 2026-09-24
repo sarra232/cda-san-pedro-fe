@@ -4,6 +4,10 @@ import { Factura } from '../types/factura';
 
 export interface DashboardStats {
   recaudoHoy: number;
+  gananciaNetaCdaHoy?: number;
+  totalTercerosHoy?: number;
+  totalIvaHoy?: number;
+  margenCdaPorcentajeHoy?: number;
   vehiculosAtendidosHoy: number;
   facturasEmitidasHoy: number;
   alertasVencimiento: number;
@@ -22,10 +26,21 @@ export interface ReporteVentas {
   fechaInicio: string;
   fechaFin: string;
   totalRecaudado: number;
+  totalGananciaCda: number;
+  totalTerceros: number;
+  totalIva: number;
+  totalRunt: number;
+  totalSicov: number;
+  totalSeguridadVial: number;
+  totalOperadorYOtros: number;
+  margenCdaPorcentaje: number;
   totalVehiculos: number;
   totalFacturas: number;
   vehiculosPorCategoria: Record<string, number>;
   ingresosPorMetodoPago: Record<string, number>;
+  gananciaPorCategoria?: Record<string, number>;
+  recaudoPorCategoria?: Record<string, number>;
+  tercerosPorCategoria?: Record<string, number>;
   facturas: Factura[];
 }
 
@@ -42,6 +57,29 @@ export const reporteService = {
 
     const res = await api.get<ApiResponse<ReporteVentas>>('/reportes/ventas', { params });
     return res.data.data;
+  },
+
+  async downloadExcel(fechaInicio?: string, fechaFin?: string): Promise<void> {
+    const params: any = {};
+    if (fechaInicio) params.fechaInicio = fechaInicio;
+    if (fechaFin) params.fechaFin = fechaFin;
+
+    const response = await api.get('/reportes/ventas/export-excel', {
+      params,
+      responseType: 'blob',
+    });
+
+    const blob = new Blob([response.data], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Reporte_Liquidacion_CDA_${fechaInicio || 'inicio'}_${fechaFin || 'fin'}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   },
 
   async downloadCsv(fechaInicio?: string, fechaFin?: string): Promise<void> {

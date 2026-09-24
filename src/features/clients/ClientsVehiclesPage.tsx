@@ -829,7 +829,7 @@ export function ClientsVehiclesPage() {
                         <td className="p-4">
                           {v.propietario ? (
                             <div className="space-y-1">
-                              <p className="font-semibold text-white">{v.propietario.nombresRazonSocial}</p>
+                              <p className="font-semibold text-white uppercase">{v.propietario.nombresRazonSocial}</p>
                               <div className="flex items-center gap-1.5 whitespace-nowrap">
                                 {renderTipoBadge(v.propietario.tipoDocumento)}
                                 <span className="font-mono text-xs font-bold text-slate-200">
@@ -953,7 +953,7 @@ export function ClientsVehiclesPage() {
                     </div>
 
                     <div>
-                      <p className="font-bold text-white text-sm flex items-center gap-1.5">
+                      <p className="font-bold text-white text-sm flex items-center gap-1.5 uppercase">
                         {isEmpresa ? <Building2 className="w-3.5 h-3.5 text-sky-400 shrink-0" /> : <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
                         <span>{c.nombresRazonSocial}</span>
                       </p>
@@ -1066,7 +1066,7 @@ export function ClientsVehiclesPage() {
                               ) : (
                                 <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                               )}
-                              <span className="font-bold text-white text-xs">{c.nombresRazonSocial}</span>
+                              <span className="font-bold text-white text-xs uppercase">{c.nombresRazonSocial}</span>
                             </div>
                             <span className="text-[10px] text-slate-500">
                               {isEmpresa ? 'Persona Jurídica (Empresa)' : 'Persona Natural'}

@@ -4,7 +4,9 @@ import { Factura, FacturaFormData, MetodoPago } from '../../types/factura';
 import { Tarifa } from '../../types/tarifa';
 import { TipoDocumento } from '../../types/auth';
 import { formatPlaca, handlePhoneInput } from '../../utils/formatters';
+import { ServicioBadge } from '../../components/common/ServicioBadge';
 import { siigoService } from '../../services/siigoService';
+import { clienteService } from '../../services/clienteService';
 import { 
   X, 
   Receipt, 
@@ -18,8 +20,8 @@ import {
   CreditCard,
   Banknote,
   Smartphone,
-  FileCheck,
-  Tag
+  Tag,
+  Search
 } from 'lucide-react';
 
 interface CompleteInvoiceModalProps {
@@ -51,6 +53,7 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
   const [pagadorDireccion, setPagadorDireccion] = useState('');
 
   const [loading, setLoading] = useState(false);
+  const [isSearchingDoc, setIsSearchingDoc] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Sincronizar datos del pagador cuando se selecciona la orden o cambia el tipo de pagador
@@ -58,13 +61,14 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
     if (tipo === 'PROPIETARIO') {
       const prop = targetOrden.vehiculo?.propietario;
       if (prop) {
-        setPagadorTipoDoc(prop.tipoDocumento);
-        setPagadorDoc(prop.numeroDocumento);
-        setPagadorNombre(prop.nombresRazonSocial);
-        setPagadorCelular(prop.celular);
+        setPagadorTipoDoc(prop.tipoDocumento || 'CC');
+        setPagadorDoc(prop.numeroDocumento || '');
+        setPagadorNombre(prop.nombresRazonSocial || '');
+        setPagadorCelular(prop.celular || '');
         setPagadorEmail(prop.email || '');
         setPagadorDireccion(prop.direccion || '');
       } else {
+        setPagadorTipoDoc('CC');
         setPagadorDoc('');
         setPagadorNombre('');
         setPagadorCelular('');
@@ -72,15 +76,19 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
         setPagadorDireccion('');
       }
     } else if (tipo === 'CONDUCTOR') {
-      const cond = targetOrden.conductor || targetOrden.vehiculo?.propietario;
-      if (cond) {
-        setPagadorTipoDoc(cond.tipoDocumento);
+      const cond = targetOrden.conductor;
+      const prop = targetOrden.vehiculo?.propietario;
+      // Solo usar conductor si existe y no es exactamente idéntico al propietario o está explícito
+      if (cond && cond.numeroDocumento && (!prop || cond.numeroDocumento !== prop.numeroDocumento)) {
+        setPagadorTipoDoc(cond.tipoDocumento || 'CC');
         setPagadorDoc(cond.numeroDocumento);
-        setPagadorNombre(cond.nombresRazonSocial);
-        setPagadorCelular(cond.celular);
+        setPagadorNombre(cond.nombresRazonSocial || '');
+        setPagadorCelular(cond.celular || '');
         setPagadorEmail(cond.email || '');
         setPagadorDireccion(cond.direccion || '');
       } else {
+        // Dejar campos limpios para que el cajero digite los datos del conductor libremente
+        setPagadorTipoDoc('CC');
         setPagadorDoc('');
         setPagadorNombre('');
         setPagadorCelular('');
@@ -88,7 +96,7 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
         setPagadorDireccion('');
       }
     } else {
-      // TERCERO
+      // TERCERO / EMPRESA
       setPagadorTipoDoc('NIT');
       setPagadorDoc('');
       setPagadorNombre('');
@@ -98,20 +106,52 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
     }
   };
 
+  const lastOrdenIdRef = React.useRef<string | null>(null);
+  const wasOpenRef = React.useRef<boolean>(false);
+
   useEffect(() => {
-    if (orden && isOpen) {
-      setPagadorTipo('PROPIETARIO');
-      setMetodoPago('EFECTIVO');
-      setMontoRecibido('');
-      setError(null);
-      sincronizarDatos(orden, 'PROPIETARIO');
+    if (isOpen && orden) {
+      if (!wasOpenRef.current || lastOrdenIdRef.current !== orden.id) {
+        lastOrdenIdRef.current = orden.id;
+        wasOpenRef.current = true;
+        setPagadorTipo('PROPIETARIO');
+        setMetodoPago('EFECTIVO');
+        setMontoRecibido('');
+        setError(null);
+        sincronizarDatos(orden, 'PROPIETARIO');
+      }
+    } else if (!isOpen) {
+      wasOpenRef.current = false;
+      lastOrdenIdRef.current = null;
     }
-  }, [orden, isOpen]);
+  }, [isOpen, orden?.id]);
 
   const handleTipoChange = (tipo: 'PROPIETARIO' | 'CONDUCTOR' | 'TERCERO') => {
     setPagadorTipo(tipo);
     if (orden) {
       sincronizarDatos(orden, tipo);
+    }
+  };
+
+  // Búsqueda inteligente de cliente por documento al salir del campo
+  const handleDocBlur = async () => {
+    const docClean = pagadorDoc.trim();
+    if (docClean.length >= 5 && (pagadorTipo !== 'PROPIETARIO' || !pagadorNombre.trim())) {
+      try {
+        setIsSearchingDoc(true);
+        const clienteEncontrado = await clienteService.getClienteByDocumento(docClean);
+        if (clienteEncontrado) {
+          if (clienteEncontrado.tipoDocumento) setPagadorTipoDoc(clienteEncontrado.tipoDocumento);
+          if (clienteEncontrado.nombresRazonSocial) setPagadorNombre(clienteEncontrado.nombresRazonSocial);
+          if (clienteEncontrado.celular) setPagadorCelular(clienteEncontrado.celular);
+          if (clienteEncontrado.email) setPagadorEmail(clienteEncontrado.email);
+          if (clienteEncontrado.direccion) setPagadorDireccion(clienteEncontrado.direccion);
+        }
+      } catch (err) {
+        // Silencioso
+      } finally {
+        setIsSearchingDoc(false);
+      }
     }
   };
 
@@ -121,7 +161,13 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
 
   const getTarifa = (categoria?: string) => {
     if (esReinspeccionGratuita) return 0;
-    if (!categoria) return tarifas.find((t) => t.categoria === 'LIVIANO')?.precio || 320000;
+    const serv = orden.tipoServicio || 'RTM_LEGAL';
+    if (!categoria) {
+      const byServ = tarifas.find((t) => t.tipoServicio === serv && t.categoria === 'LIVIANO');
+      return byServ ? byServ.precio : (tarifas.find((t) => t.categoria === 'LIVIANO')?.precio || 320000);
+    }
+    const foundWithServ = tarifas.find((t) => t.categoria === categoria && t.tipoServicio === serv);
+    if (foundWithServ) return foundWithServ.precio;
     const found = tarifas.find((t) => t.categoria === categoria);
     return found ? found.precio : 320000;
   };
@@ -130,9 +176,15 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
   const subtotal = Math.round(currentTotal / 1.19);
   const iva = currentTotal - subtotal;
 
-  const getSiigoServiceInfo = (categoria?: string, esReinspeccion?: boolean) => {
-    if (esReinspeccion) {
+  const getSiigoServiceInfo = (categoria?: string, esReinspeccion?: boolean, tipoServicio?: string) => {
+    if (esReinspeccion || tipoServicio === 'REINSPECCION_GRATUITA') {
       return { codigo: '014', nombre: 'REINSPECCION TECNO ($0 COP)', taxId: 'Exento' };
+    }
+    if (tipoServicio === 'PERITAJE') {
+      return { codigo: '016', nombre: 'PERITAJE AUTOMOTRIZ (IVA 19%)', taxId: '18668' };
+    }
+    if (tipoServicio === 'REVISION_PREVENTIVA' || tipoServicio === 'PREVENTIVA') {
+      return { codigo: '014', nombre: 'REVISIONES PREVENTIVAS (IVA 19%)', taxId: '18668' };
     }
     switch (categoria) {
       case 'MOTO':
@@ -147,7 +199,7 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
     }
   };
 
-  const siigoServiceInfo = getSiigoServiceInfo(orden.vehiculo?.categoria, esReinspeccionGratuita);
+  const siigoServiceInfo = getSiigoServiceInfo(orden.vehiculo?.categoria, esReinspeccionGratuita, orden.tipoServicio);
   const esEmpresa = pagadorTipoDoc === 'NIT' || pagadorTipo === 'TERCERO';
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -234,13 +286,14 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
               <Receipt className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <span>Completar & Facturar SIIGO</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-lg font-bold text-white">Completar & Facturar SIIGO</h3>
                 <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                  Turno #{orden.consecutivo || 'S/N'}
+                  Turno #{orden.turnoDiario || orden.consecutivo || 'S/N'}
                 </span>
-              </h3>
-              <p className="text-xs text-slate-400">
+                <ServicioBadge tipoServicio={orden.tipoServicio} esReinspeccion={orden.esReinspeccion} size="sm" />
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
                 Placa: <strong className="font-mono text-amber-400">{formatPlaca(orden.vehiculo?.placa)}</strong> • {orden.vehiculo?.marca} {orden.vehiculo?.linea}
               </p>
             </div>
@@ -358,17 +411,37 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
                 </select>
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                  Número de Documento / NIT {pagadorTipoDoc === 'NIT' ? '(con dígito de verificación, ej: 900123456-1)' : '*'}
-                </label>
-                <input
-                  type="text"
-                  value={pagadorDoc}
-                  onChange={(e) => setPagadorDoc(e.target.value)}
-                  placeholder={pagadorTipoDoc === 'NIT' ? "900123456-1" : "Ej: 1020304050"}
-                  className="w-full bg-slate-900 border border-slate-800 text-white text-xs rounded-xl px-3 py-2 font-mono focus:border-amber-500 focus:outline-none"
-                  required
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-400">
+                    Número de Documento / NIT {pagadorTipoDoc === 'NIT' ? '(con dígito de verificación, ej: 900123456-1)' : '*'}
+                  </label>
+                  {isSearchingDoc && (
+                    <span className="text-[10px] text-amber-400 flex items-center gap-1 animate-pulse">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Buscando...
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={pagadorDoc}
+                    onChange={(e) => setPagadorDoc(e.target.value)}
+                    onBlur={handleDocBlur}
+                    placeholder={pagadorTipoDoc === 'NIT' ? "900123456-1" : "Ej: 1020304050"}
+                    className="w-full bg-slate-900 border border-slate-800 text-white text-xs rounded-xl px-3 py-2 font-mono focus:border-amber-500 focus:outline-none"
+                    required
+                  />
+                  {pagadorTipo !== 'PROPIETARIO' && (
+                    <button
+                      type="button"
+                      onClick={handleDocBlur}
+                      title="Buscar datos de cliente registrado"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-amber-400 rounded transition-colors"
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -436,73 +509,64 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <button
                 type="button"
                 onClick={() => setMetodoPago('EFECTIVO')}
-                className={`p-3 rounded-2xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
+                className={`p-3.5 rounded-2xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
                   metodoPago === 'EFECTIVO'
                     ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
                 }`}
               >
-                <Banknote className="w-4 h-4" />
-                <span>Efectivo</span>
+                <Banknote className="w-5 h-5" />
+                <span className="text-sm">Efectivo</span>
                 <span className="text-[10px] font-mono opacity-80">SIIGO: 5014</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setMetodoPago('TRANSFERENCIA')}
-                className={`p-3 rounded-2xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
+                className={`p-3.5 rounded-2xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
                   metodoPago === 'TRANSFERENCIA'
                     ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
                 }`}
               >
-                <Smartphone className="w-4 h-4" />
-                <span>Transferencia</span>
+                <Smartphone className="w-5 h-5" />
+                <span className="text-sm">Transferencia</span>
                 <span className="text-[10px] font-mono opacity-80">SIIGO: 7767</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setMetodoPago('DATAFONO_TARJETA')}
-                className={`p-3 rounded-2xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
+                className={`p-3.5 rounded-2xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
                   metodoPago === 'DATAFONO_TARJETA'
                     ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
                 }`}
               >
-                <CreditCard className="w-4 h-4" />
-                <span>Datáfono</span>
+                <CreditCard className="w-5 h-5" />
+                <span className="text-sm">Datáfono / Tarjeta</span>
                 <span className="text-[10px] font-mono opacity-80">SIIGO: 5016</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMetodoPago('SISTECREDITO')}
-                className={`p-3 rounded-2xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 ${
-                  metodoPago === 'SISTECREDITO'
-                    ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-md shadow-amber-500/20'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                <FileCheck className="w-4 h-4" />
-                <span>Sistecrédito</span>
-                <span className="text-[10px] font-mono opacity-80">SIIGO: 5015</span>
               </button>
             </div>
 
             {/* Calculadora de Efectivo / Cambio */}
             {metodoPago === 'EFECTIVO' && currentTotal > 0 && (
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+              <div className="p-3.5 bg-slate-950 rounded-2xl border border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
                 <div>
-                  <label className="block text-slate-400 text-[11px] font-bold mb-1">Monto Recibido en Caja:</label>
+                  <label className="block text-slate-400 text-[11px] font-bold mb-1">Monto Recibido en Caja ($):</label>
                   <input
                     type="number"
                     value={montoRecibido}
                     onChange={(e) => setMontoRecibido(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                      }
+                    }}
                     placeholder="Ej. 350000"
                     className="w-full bg-slate-900 border border-slate-800 text-white font-mono font-bold text-xs rounded-xl px-3 py-2 focus:border-amber-500 focus:outline-none"
                   />
@@ -536,9 +600,14 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
               </span>
             </div>
 
+            <div className="flex justify-between items-center text-slate-300">
+              <span>Servicio CDA Solicitado:</span>
+              <ServicioBadge tipoServicio={orden.tipoServicio} esReinspeccion={orden.esReinspeccion} size="xs" />
+            </div>
+
             <div className="flex justify-between text-slate-300">
               <span>Descripción SIIGO:</span>
-              <span className="font-semibold text-white">{siigoServiceInfo.nombre}</span>
+              <span className="font-semibold text-white text-right">{siigoServiceInfo.nombre}</span>
             </div>
             <div className="flex justify-between text-slate-400">
               <span>Subtotal (Base Imponible):</span>

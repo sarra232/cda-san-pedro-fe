@@ -15,7 +15,6 @@ import {
   CreditCard, 
   X, 
   Gauge, 
-  Wallet, 
   Settings,
   Award 
 } from 'lucide-react';
@@ -117,33 +116,61 @@ export function Sidebar({ isOpen, onClose }: Props) {
             )}
 
             {/* ========================================================================= */}
-            {/* 2. GRUPO: OPERACIÓN & PISTA */}
+            {/* 2. GRUPO: CICLO DEL SERVICIO (OPERACIÓN CDA) */}
             {/* ========================================================================= */}
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <Gauge className="w-3.5 h-3.5 text-cda-yellow-500/70" />
-                <span>Operación & Pista</span>
+                <span>Ciclo del Servicio (Operación)</span>
               </div>
 
-              {/* 2.1 Recepción e Ingreso (Admin y Recepcionista) */}
+              {/* 2.1 Paso 1: Recepción e Ingreso (Ventanilla) */}
               {(isAdmin || isRecep) && (
                 <NavLink
                   to="/recepcion"
                   onClick={onClose}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    `flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                       isActive
                         ? 'bg-cda-yellow-500 text-black shadow-md shadow-cda-yellow-500/20 font-bold'
                         : 'text-slate-300 hover:bg-cda-dark-800 hover:text-white'
                     }`
                   }
                 >
-                  <Car className="w-4 h-4 shrink-0" />
-                  <span>Recepción de Vehículos</span>
+                  <div className="flex items-center gap-2.5">
+                    <Car className="w-4 h-4 shrink-0 text-cda-yellow-400" />
+                    <span>1. Registro e Ingreso</span>
+                  </div>
+                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md bg-cda-dark-800 text-slate-400 border border-cda-dark-700 whitespace-nowrap shrink-0">
+                    Ventanilla
+                  </span>
                 </NavLink>
               )}
 
-              {/* 2.2 Pista de Inspección (Vehículos en Pista / Procesos Abiertos) */}
+              {/* 2.2 Paso 2: Facturación y Caja (Cobro en Caja) */}
+              {(isAdmin || isRecep) && (
+                <NavLink
+                  to="/facturacion"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    `flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      isActive
+                        ? 'bg-cda-yellow-500 text-black shadow-md shadow-cda-yellow-500/20 font-bold'
+                        : 'text-slate-300 hover:bg-cda-dark-800 hover:text-white'
+                    }`
+                  }
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Receipt className="w-4 h-4 shrink-0 text-amber-400" />
+                    <span>2. Facturación y Caja</span>
+                  </div>
+                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 whitespace-nowrap shrink-0">
+                    Recaudo
+                  </span>
+                </NavLink>
+              )}
+
+              {/* 2.3 Paso 3: Pista de Inspección (Pruebas Técnicas & Dictamen) */}
               <NavLink
                 to="/pista?filtro=ABIERTOS"
                 onClick={onClose}
@@ -155,17 +182,27 @@ export function Sidebar({ isOpen, onClose }: Props) {
                   }`
                 }
               >
-                <div className="flex items-center gap-3">
-                  <Wrench className="w-4 h-4 shrink-0" />
-                  <span>Vehículos en Pista</span>
+                <div className="flex items-center gap-2.5">
+                  <Wrench className="w-4 h-4 shrink-0 text-cyan-400" />
+                  <span>3. Inspección en Pista</span>
                 </div>
-                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 whitespace-nowrap shrink-0">
                   En Pista
                 </span>
               </NavLink>
+            </div>
 
-              {/* 2.3 Clientes y Vehículos (Admin, Director y Recepción) */}
-              {!isTecnico && (
+            {/* ========================================================================= */}
+            {/* 3. GRUPO: DIRECTORIOS & BASE DE DATOS */}
+            {/* ========================================================================= */}
+            {!isTecnico && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  <Users className="w-3.5 h-3.5 text-cda-yellow-500/70" />
+                  <span>Directorios & Base de Datos</span>
+                </div>
+
+                {/* 3.1 Directorio de Clientes y Vehículos */}
                 <NavLink
                   to="/clientes"
                   onClick={onClose}
@@ -180,39 +217,29 @@ export function Sidebar({ isOpen, onClose }: Props) {
                   <Users className="w-4 h-4 shrink-0" />
                   <span>Clientes y Vehículos</span>
                 </NavLink>
-              )}
-            </div>
 
-            {/* ========================================================================= */}
-            {/* 3. GRUPO: CAJA & FACTURACIÓN */}
-            {/* ========================================================================= */}
-            {(isAdmin || isRecep) && (
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                  <Wallet className="w-3.5 h-3.5 text-cda-yellow-500/70" />
-                  <span>Caja & Facturación</span>
-                </div>
-
-                {/* 3.1 Facturación (Admin y Recepción) */}
-                <NavLink
-                  to="/facturacion"
-                  onClick={onClose}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-                      isActive
-                        ? 'bg-cda-yellow-500 text-black shadow-md shadow-cda-yellow-500/20 font-bold'
-                        : 'text-slate-300 hover:bg-cda-dark-800 hover:text-white'
-                    }`
-                  }
-                >
-                  <Receipt className="w-4 h-4 shrink-0" />
-                  <span>Facturación & Turnos</span>
-                </NavLink>
+                {/* 3.2 Directorio de Proveedores (Sólo Administrador) */}
+                {isAdmin && (
+                  <NavLink
+                    to="/proveedores"
+                    onClick={onClose}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                        isActive
+                          ? 'bg-cda-yellow-500 text-black shadow-md shadow-cda-yellow-500/20 font-bold'
+                          : 'text-slate-300 hover:bg-cda-dark-800 hover:text-white'
+                      }`
+                    }
+                  >
+                    <Building2 className="w-4 h-4 shrink-0" />
+                    <span>Directorio Proveedores</span>
+                  </NavLink>
+                )}
               </div>
             )}
 
             {/* ========================================================================= */}
-            {/* 4. GRUPO: ADMINISTRACIÓN & GESTIÓN */}
+            {/* 4. GRUPO: ADMINISTRACIÓN & CONTROL */}
             {/* ========================================================================= */}
             {(isAdmin || isDirector) && (
               <div className="space-y-1">
@@ -239,25 +266,7 @@ export function Sidebar({ isOpen, onClose }: Props) {
                   </NavLink>
                 )}
 
-                {/* 4.2 Directorio de Proveedores (Sólo Administrador) */}
-                {isAdmin && (
-                  <NavLink
-                    to="/proveedores"
-                    onClick={onClose}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-                        isActive
-                          ? 'bg-cda-yellow-500 text-black shadow-md shadow-cda-yellow-500/20 font-bold'
-                          : 'text-slate-300 hover:bg-cda-dark-800 hover:text-white'
-                      }`
-                    }
-                  >
-                    <Building2 className="w-4 h-4 shrink-0" />
-                    <span>Proveedores</span>
-                  </NavLink>
-                )}
-
-                {/* 4.3 Catálogo de Servicios & Tarifas */}
+                {/* 4.2 Catálogo de Servicios & Tarifas */}
                 <NavLink
                   to="/servicios"
                   onClick={onClose}
@@ -273,7 +282,7 @@ export function Sidebar({ isOpen, onClose }: Props) {
                   <span>{isAdmin ? 'Catálogo & Tarifas' : 'Tarifas de Servicios'}</span>
                 </NavLink>
 
-                {/* 4.4 Reportes Analíticos (Administrador y Director Técnico) */}
+                {/* 4.3 Reportes Analíticos y Liquidación CDA (Administrador y Director Técnico) */}
                 <NavLink
                   to="/reportes"
                   onClick={onClose}
@@ -285,11 +294,11 @@ export function Sidebar({ isOpen, onClose }: Props) {
                     }`
                   }
                 >
-                  <FileSpreadsheet className="w-4 h-4 shrink-0" />
-                  <span>Reportes por Fechas</span>
+                  <FileSpreadsheet className="w-4 h-4 shrink-0 text-cda-yellow-400" />
+                  <span>{isAdmin ? 'Reportes & Liquidación CDA' : 'Reportes por Fechas'}</span>
                 </NavLink>
 
-                {/* 4.5 Cola de Notificaciones (Sólo Administrador) */}
+                {/* 4.4 Cola de Notificaciones (Sólo Administrador) */}
                 {isAdmin && (
                   <NavLink
                     to="/notificaciones"
@@ -307,7 +316,7 @@ export function Sidebar({ isOpen, onClose }: Props) {
                   </NavLink>
                 )}
 
-                {/* 4.6 Talento Humano & Personal (Administrador y Director Técnico) */}
+                {/* 4.5 Talento Humano & Personal (Administrador y Director Técnico) */}
                 <NavLink
                   to="/talento-humano"
                   onClick={onClose}
@@ -324,8 +333,33 @@ export function Sidebar({ isOpen, onClose }: Props) {
                 </NavLink>
               </div>
             )}
+
+            {/* ========================================================================= */}
+            {/* 5. CUENTA & PREFERENCIAS (ACCESIBLE PARA TODOS LOS ROLES) */}
+            {/* ========================================================================= */}
+            <div className="space-y-1 pt-1">
+              <div className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                <Settings className="w-3 h-3 text-slate-400" />
+                <span>Mi Cuenta</span>
+              </div>
+              <NavLink
+                to="/perfil"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    isActive
+                      ? 'bg-cda-yellow-500 text-black shadow-md shadow-cda-yellow-500/20 font-bold'
+                      : 'text-slate-300 hover:bg-cda-dark-800 hover:text-white'
+                  }`
+                }
+              >
+                <Users className="w-4 h-4 shrink-0 text-cda-yellow-400" />
+                <span>Mi Perfil & Seguridad</span>
+              </NavLink>
+            </div>
           </nav>
         </div>
+
 
         {/* Footer info in sidebar */}
         <div className="pt-3 border-t border-cda-dark-800 shrink-0">

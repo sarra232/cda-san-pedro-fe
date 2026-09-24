@@ -32,14 +32,18 @@ export function BillingPage() {
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [tarifas, setTarifas] = useState<Tarifa[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Modales
   const [selectedOrdenParaFacturar, setSelectedOrdenParaFacturar] = useState<OrdenIngreso | null>(null);
   const [facturaEmitidaModal, setFacturaEmitidaModal] = useState<Factura | null>(null);
 
-  const loadData = async () => {
+  const loadData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        if (ordenes.length === 0) setLoading(true);
+        setIsRefreshing(true);
+      }
       const [ordList, facts, tList] = await Promise.all([
         ingresoService.getIngresos(),
         facturaService.getFacturas(),
@@ -50,8 +54,15 @@ export function BillingPage() {
       setFacturas(facts);
       setTarifas(tList);
 
+      // Si hay una orden seleccionada para facturar abierta, sincronizarla silenciosamente
+      setSelectedOrdenParaFacturar((current) => {
+        if (!current) return null;
+        const fresh = ordList.find((o) => o.id === current.id);
+        return fresh || current;
+      });
+
       // Si viene un parametro ingresoId en la URL, abrir directamente el formulario o la factura de esa orden
-      if (initialIngresoId) {
+      if (initialIngresoId && !silent) {
         const target = ordList.find((o) => o.id === initialIngresoId);
         if (target) {
           const facturaExistente = facts.find(
@@ -69,18 +80,40 @@ export function BillingPage() {
     } catch (error) {
       console.error('Error al cargar datos de facturación:', error);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+        setIsRefreshing(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadData();
+    loadData(false);
+
+    // 1. Polling reactivo cada 6 segundos para sincronización entre puestos de trabajo
+    const interval = setInterval(() => {
+      loadData(true);
+    }, 6000);
+
+    // 2. Revalidación inmediata al volver al navegador o cambiar pestaña
+    const handleRevalidate = () => {
+      loadData(true);
+    };
+
+    window.addEventListener('focus', handleRevalidate);
+    document.addEventListener('visibilitychange', handleRevalidate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleRevalidate);
+      document.removeEventListener('visibilitychange', handleRevalidate);
+    };
   }, [initialIngresoId]);
 
   const handleEmitirFactura = async (formData: FacturaFormData): Promise<Factura> => {
     const res = await facturaService.emitirFactura(formData);
     setFacturaEmitidaModal(res);
-    await loadData();
+    await loadData(false);
     return res;
   };
 
@@ -179,11 +212,12 @@ export function BillingPage() {
           </div>
 
           <button
-            onClick={loadData}
-            className="p-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-xl transition-all"
-            title="Refrescar datos"
+            onClick={() => loadData(false)}
+            disabled={isRefreshing}
+            className="p-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-xl transition-all disabled:opacity-50"
+            title="Refrescar datos en tiempo real"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 text-amber-400 ${isRefreshing || loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>

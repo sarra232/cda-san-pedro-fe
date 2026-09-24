@@ -15,8 +15,10 @@ import { ServicesCatalogPage } from '../features/services/ServicesCatalogPage';
 import { ProveedoresPage } from '../features/expenses/ProveedoresPage';
 import { CuentasPorPagarPage } from '../features/expenses/CuentasPorPagarPage';
 import { HRPage } from '../features/hr/HRPage';
+import { ProfilePage } from '../features/profile/ProfilePage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
+
   const { user, token, checkTokenValidity } = useAuthStore();
   const isAuthed = Boolean(user && token && checkTokenValidity());
   return isAuthed ? <>{children}</> : <Navigate to="/login" replace />;
@@ -98,19 +100,17 @@ export function AppRoutes() {
             </AdminRoute>
           }
         />
-        <Route
-          path="notificaciones"
-          element={
-            <AdminRoute>
-              <NotificationsPage />
-            </AdminRoute>
-          }
-        />
+        <Route path="notificaciones" element={<AdminRoute><NotificationsPage /></AdminRoute>} />
         <Route path="usuarios" element={<Navigate to="/talento-humano" replace />} />
         <Route path="personal" element={<Navigate to="/talento-humano" replace />} />
+
+        {/* Módulo de Perfil de Usuario (Accesible por cualquier usuario autenticado) */}
+        <Route path="perfil" element={<ProfilePage />} />
+        <Route path="profile" element={<Navigate to="/perfil" replace />} />
       </Route>
 
       {/* Fallback */}
+
       <Route
         path="*"
         element={<Navigate to={user ? defaultHome : "/login"} replace />}

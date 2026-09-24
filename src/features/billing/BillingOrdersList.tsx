@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { OrdenIngreso } from '../../types/ingreso';
 import { Factura } from '../../types/factura';
 import { Tarifa } from '../../types/tarifa';
-import { formatPlaca, formatDocumento } from '../../utils/formatters';
+import { formatPlaca, formatDocumento, formatTipoServicio, formatFechaHora, formatHora } from '../../utils/formatters';
+import { ServicioBadge } from '../../components/common/ServicioBadge';
 import { 
   Search, 
   Receipt, 
@@ -98,11 +99,15 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
       const matchConsecutivo = orden.consecutivo?.toString().includes(q) || false;
       const matchPropietario = orden.vehiculo?.propietario?.nombresRazonSocial?.toLowerCase().includes(q) || false;
       const matchDoc = orden.vehiculo?.propietario?.numeroDocumento?.includes(q) || false;
+      const matchServicio = 
+        (orden.tipoServicio && orden.tipoServicio.toLowerCase().includes(q)) ||
+        (orden.tipoServicio && formatTipoServicio(orden.tipoServicio, orden.esReinspeccion).toLowerCase().includes(q)) ||
+        false;
       
       const factura = getFacturaOrden(orden);
       const matchFactura = factura?.numeroFactura?.toLowerCase().includes(q) || orden.numeroFactura?.toLowerCase().includes(q) || false;
 
-      const coincideBusqueda = !q || matchPlaca || matchConsecutivo || matchPropietario || matchDoc || matchFactura;
+      const coincideBusqueda = !q || matchPlaca || matchConsecutivo || matchPropietario || matchDoc || matchServicio || matchFactura;
       if (!coincideBusqueda) return false;
 
       const facturada = isOrdenFacturada(orden);
@@ -128,10 +133,25 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
 
       return true; // TODAS
     }).sort((a, b) => {
-      // Ordenamiento por defecto: descendente de acuerdo al tiempo (más recientes primero)
-      const fechaA = new Date(a.fechaIngreso || a.createdAt || 0).getTime();
-      const fechaB = new Date(b.fechaIngreso || b.createdAt || 0).getTime();
-      return fechaB - fechaA;
+      // Si estamos en COMPLETADOS, mostrar las facturas más recientes primero
+      if (activeFilter === 'COMPLETADOS') {
+        const fechaA = new Date(a.fechaIngreso || a.createdAt || 0).getTime();
+        const fechaB = new Date(b.fechaIngreso || b.createdAt || 0).getTime();
+        return fechaB - fechaA;
+      }
+
+      // Para PENDIENTES, RECHAZADOS o TODAS: Orden FIFO de llegada (primer turno en llegar es el primero en facturar)
+      const facturadaA = isOrdenFacturada(a);
+      const facturadaB = isOrdenFacturada(b);
+
+      // Si una está pendiente y la otra facturada, poner la pendiente primero
+      if (!facturadaA && facturadaB) return -1;
+      if (facturadaA && !facturadaB) return 1;
+
+      const timeA = new Date(a.fechaIngreso || a.createdAt || 0).getTime();
+      const timeB = new Date(b.fechaIngreso || b.createdAt || 0).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+      return (a.consecutivo || 0) - (b.consecutivo || 0);
     });
   }, [ordenes, facturasPorOrdenId, facturas, activeFilter, searchQuery]);
 
@@ -254,36 +274,48 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
                       {getCategoryIcon(orden.vehiculo?.categoria)}
                     </div>
                     <div>
-                      <span className="font-mono font-black text-base text-amber-400 tracking-wider">
-                        {formatPlaca(orden.vehiculo?.placa)}
-                      </span>
-                      <div className="text-[11px] text-slate-400">
-                        Turno #{orden.consecutivo || 'S/N'} • {orden.vehiculo?.marca} {orden.vehiculo?.linea}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono font-black text-base text-amber-400 tracking-wider">
+                          {formatPlaca(orden.vehiculo?.placa)}
+                        </span>
+                        <ServicioBadge tipoServicio={orden.tipoServicio} esReinspeccion={orden.esReinspeccion} size="xs" />
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5 flex-wrap">
+                        <span>Turno #{orden.consecutivo || 'S/N'} • {orden.vehiculo?.marca} {orden.vehiculo?.linea}</span>
+                        {orden.fechaIngreso && (
+                          <>
+                            <span>•</span>
+                            <span className="inline-flex items-center gap-0.5 text-slate-300 font-mono text-[10px]">
+                              <Clock className="w-2.5 h-2.5 text-cda-yellow-400 shrink-0" />
+                              <span>{formatHora(orden.fechaIngreso)}</span>
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Badge de Estado */}
-                  <div>
+                  <div className="shrink-0">
                     {facturada ? (
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>Facturado {factura ? `(#${factura.numeroFactura})` : (orden.numeroFactura ? `(#${orden.numeroFactura})` : '')}</span>
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 whitespace-nowrap shrink-0">
+                        <CheckCircle2 className="w-3 h-3 shrink-0" />
+                        <span className="whitespace-nowrap">Facturado {factura ? `(#${factura.numeroFactura})` : (orden.numeroFactura ? `(#${orden.numeroFactura})` : '')}</span>
                       </span>
                     ) : orden.estado === 'RECHAZADO' ? (
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" />
-                        <span>Día {diasTrans} de 15</span>
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30 flex items-center gap-1 whitespace-nowrap shrink-0">
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        <span className="whitespace-nowrap">Día {diasTrans} de 15</span>
                       </span>
                     ) : orden.estado === 'APROBADO' ? (
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                        <ShieldCheck className="w-3 h-3" />
-                        <span>Listo Cobro</span>
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1 whitespace-nowrap shrink-0">
+                        <ShieldCheck className="w-3 h-3 shrink-0" />
+                        <span className="whitespace-nowrap">Listo Cobro</span>
                       </span>
                     ) : (
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30 flex items-center gap-1">
-                        <Wrench className="w-3 h-3 animate-spin" />
-                        <span>En Pista</span>
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30 flex items-center gap-1 whitespace-nowrap shrink-0">
+                        <Wrench className="w-3 h-3 animate-spin shrink-0" />
+                        <span className="whitespace-nowrap">En Pista</span>
                       </span>
                     )}
                   </div>
@@ -420,9 +452,18 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
                           <span className="font-mono font-black text-amber-400 text-sm tracking-wider block">
                             {formatPlaca(orden.vehiculo?.placa)}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            Turno #{orden.consecutivo || 'S/N'}
-                          </span>
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono">
+                            <span>Turno #{orden.consecutivo || 'S/N'}</span>
+                            {orden.fechaIngreso && (
+                              <>
+                                <span>•</span>
+                                <span className="inline-flex items-center gap-0.5 text-slate-300">
+                                  <Clock className="w-2.5 h-2.5 text-cda-yellow-400 shrink-0" />
+                                  <span>{formatHora(orden.fechaIngreso)}</span>
+                                </span>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -432,13 +473,8 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
                       <div className="font-bold text-white">
                         {orden.vehiculo?.marca} {orden.vehiculo?.linea}
                       </div>
-                      <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                        <span>{orden.tipoServicio}</span>
-                        {orden.esReinspeccion && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold">
-                            Reinspección $0
-                          </span>
-                        )}
+                      <div className="mt-1">
+                        <ServicioBadge tipoServicio={orden.tipoServicio} esReinspeccion={orden.esReinspeccion} size="xs" />
                       </div>
                     </td>
 
@@ -455,37 +491,37 @@ export const BillingOrdersList: React.FC<BillingOrdersListProps> = ({
                     {/* Estado Operativo */}
                     <td className="py-3.5 px-4">
                       {facturada ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Facturado {factura ? `(#${factura.numeroFactura})` : (orden.numeroFactura ? `(#${orden.numeroFactura})` : '')}</span>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 whitespace-nowrap shrink-0">
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                          <span className="whitespace-nowrap">Facturado {factura ? `(#${factura.numeroFactura})` : (orden.numeroFactura ? `(#${orden.numeroFactura})` : '')}</span>
                         </span>
                       ) : orden.estado === 'RECHAZADO' ? (
                         <div>
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
-                            <AlertTriangle className="w-3.5 h-3.5" />
-                            <span>Rechazado (Día {diasTrans} de 15)</span>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-500/15 text-red-400 border border-red-500/30 whitespace-nowrap shrink-0">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            <span className="whitespace-nowrap">Rechazado (Día {diasTrans} de 15)</span>
                           </span>
-                          <span className="block text-[10px] text-red-400/80 mt-0.5 font-medium">
+                          <span className="block text-[10px] text-red-400/80 mt-0.5 font-medium whitespace-nowrap">
                             {15 - diasTrans} días para 2da revisión
                           </span>
                         </div>
                       ) : orden.estado === 'APROBADO' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          <span>Aprobado (Listo Cobro)</span>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 whitespace-nowrap shrink-0">
+                          <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                          <span className="whitespace-nowrap">Aprobado (Listo Cobro)</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">
-                          <Wrench className="w-3.5 h-3.5 animate-spin" />
-                          <span>En Pista de Pruebas</span>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30 whitespace-nowrap shrink-0">
+                          <Wrench className="w-3.5 h-3.5 animate-spin shrink-0" />
+                          <span className="whitespace-nowrap">En Pista de Pruebas</span>
                         </span>
                       )}
                     </td>
 
                     {/* Fecha / Antigüedad */}
                     <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
-                      <div>
-                        {orden.fechaIngreso ? new Date(orden.fechaIngreso).toLocaleDateString('es-CO', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                      <div className="text-white font-medium">
+                        {orden.fechaIngreso ? formatFechaHora(orden.fechaIngreso) : '-'}
                       </div>
                       <div className="text-[10px] text-slate-500">
                         {diasTrans === 0 ? 'Hoy' : `Hace ${diasTrans} día${diasTrans > 1 ? 's' : ''}`}
