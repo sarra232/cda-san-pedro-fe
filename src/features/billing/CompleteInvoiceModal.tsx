@@ -181,7 +181,7 @@ export const CompleteInvoiceModal: React.FC<CompleteInvoiceModalProps> = ({
       return { codigo: '014', nombre: 'REINSPECCION TECNO ($0 COP)', taxId: 'Exento' };
     }
     if (tipoServicio === 'PERITAJE') {
-      return { codigo: '016', nombre: 'PERITAJE AUTOMOTRIZ (IVA 19%)', taxId: '18668' };
+      return { codigo: '014', nombre: 'PERITAJE AUTOMOTRIZ (IVA 19%)', taxId: '18668' };
     }
     if (tipoServicio === 'REVISION_PREVENTIVA' || tipoServicio === 'PREVENTIVA') {
       return { codigo: '014', nombre: 'REVISIONES PREVENTIVAS (IVA 19%)', taxId: '18668' };
